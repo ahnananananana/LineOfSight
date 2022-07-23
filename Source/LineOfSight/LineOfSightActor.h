@@ -12,7 +12,9 @@ class LINEOFSIGHT_API ALineOfSightActor : public AActor
 	GENERATED_BODY()
 
 	TArray<UStaticMeshComponent*> m_arrAdjMeshes;
-	TMap<UStaticMeshComponent*, TArray<FVector>> m_mapDetectedPoints;
+	TMap<UStaticMeshComponent*, TArray<FVector>> m_mapDetectedObstacles;
+	double m_dBaseAngle;
+	FVector m_vActorLoc;
 
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Vectex Trace Optimization", Category = "Line Of Sight")
@@ -36,10 +38,11 @@ public:
 	ALineOfSightActor();
 
 public:
-
 	UFUNCTION(BlueprintCallable)
 	void AddAdjMesh(UStaticMeshComponent* _pMesh);
 	UFUNCTION(BlueprintCallable)
 	void RemoveAdjMesh(UStaticMeshComponent* _pMesh);
 
+private:
+	bool SortByAngle(const FVector& lhs, const FVector& rhs);
 };
