@@ -20,6 +20,7 @@ struct FMeshPoint
 
 	FMeshPoint() = default;
 	FMeshPoint(UStaticMeshComponent* _mesh, double _x, double _y, double _z) : mesh(_mesh), point(_x, _y, _z) {}
+	FMeshPoint(UStaticMeshComponent* _mesh, const FVector& _point, bool _isEdge) : mesh(_mesh), point(_point), isEdge(_isEdge) {}
 };
 
 UCLASS()
@@ -40,11 +41,11 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Trace Count", Category = "Line Of Sight", meta = (ClampMin = "1"))
 	int m_iTraceCount = 100;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Trace Length", Category = "Line Of Sight", meta = (ClampMin = "0"))
-	float m_fTraceLength = 1000.f;
+	double m_dTraceLength = 1000;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "View Angle", Category = "Line Of Sight", meta = (ClampMin = "0", ClampMax = "360", UIMin = "0", UIMax = "360"))
-	float m_fViewAngle = 60.f;
+	double m_dViewAngle = 60;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Trace Offset", Category = "Line Of Sight", meta = (ClampMin = "0"))
-	float m_fTraceOffset = 10.f;
+	double m_dTraceOffset = 10;
 
 public:
 	UFUNCTION(BlueprintCallable)
@@ -60,5 +61,6 @@ public:
 	void RemoveAdjMesh(UStaticMeshComponent* _pMesh);
 
 private:
-	bool SortByAngle(const FMeshPoint& lhs, const FMeshPoint& rhs);
+	bool SortByAngle(const FMeshPoint& _lhs, const FMeshPoint& _rhs);
+	bool TryFindTwoLineCrossPoint(const FVector& _p1,const FVector& _p2,const FVector& _p3,const FVector& _p4, FVector& _vCrossPoint);
 };
