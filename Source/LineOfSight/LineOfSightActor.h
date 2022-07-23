@@ -11,10 +11,12 @@ struct FMeshPoint
 {
 	GENERATED_USTRUCT_BODY()
 
-	UPROPERTY(BlueprintReadOnly, DisplayName = "Mesh")
-	UStaticMeshComponent* mesh;
 	UPROPERTY(BlueprintReadOnly, DisplayName = "Point")
 	FVector point;
+	UPROPERTY(BlueprintReadOnly, DisplayName = "Mesh")
+	UStaticMeshComponent* mesh;
+	UPROPERTY(BlueprintReadOnly, DisplayName = "Is Edge")
+	bool isEdge;
 
 	FMeshPoint() = default;
 	FMeshPoint(UStaticMeshComponent* _mesh, double _x, double _y, double _z) : mesh(_mesh), point(_x, _y, _z) {}
