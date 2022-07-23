@@ -9,9 +9,9 @@ ALineOfSightActor::ALineOfSightActor()
 }
 
 
-TArray<FVector> ALineOfSightActor::GetDetectedPoints()
+TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 {
-	TArray<FVector> result;
+	TArray<FMeshPoint> result;
 
 	//View Angle 안에 있는지 체크
 	//왼쪽 Trace 벡터와 Forward 벡터의 내적보다 큰 점들은 내부에 있는 점
@@ -33,10 +33,10 @@ TArray<FVector> ALineOfSightActor::GetDetectedPoints()
 
 	for (const auto& pair : m_mapDetectedObstacles)
 	{
-		TArray<FVector> arrPoints = pair.Value;
-		TArray<FVector> arrValidPoints;
+		TArray<FMeshPoint> arrPoints = pair.Value;
+		TArray<FMeshPoint> arrValidPoints;
 		//각도에 따라 정렬
-		arrPoints.Sort([&](const FVector& lhs, const FVector& rhs) { return SortByAngle(lhs, rhs); });
+		arrPoints.Sort([&](const FMeshPoint& lhs, const FMeshPoint& rhs) { return SortByAngle(lhs, rhs); });
 
 		//점 갯수로 큐브인지 원기둥인지 구분
 		//큐브인 경우
@@ -50,7 +50,7 @@ TArray<FVector> ALineOfSightActor::GetDetectedPoints()
 			int iMinIdx = 0;
 			for (int i = 0; i < 4; ++i)
 			{
-				double dis = FVector::Dist(m_vActorLoc, arrPoints[i]);
+				double dis = FVector::Dist(m_vActorLoc, arrPoints[i].point);
 				if (dis < dMinDis)
 				{
 					dMinDis = dis;
@@ -64,12 +64,12 @@ TArray<FVector> ALineOfSightActor::GetDetectedPoints()
 				}
 			}
 
-			const FVector& vLeftPoint = arrPoints[0];
-			const FVector& vRightPoint = arrPoints[3];
+			const FMeshPoint& vLeftPoint = arrPoints[0];
+			const FMeshPoint& vRightPoint = arrPoints[3];
 			//2면인 경우
 			if (iMinIdx == 1 || iMinIdx == 2)
 			{
-				const FVector& vMidPoint = arrPoints[iMinIdx];
+				const FMeshPoint& vMidPoint = arrPoints[iMinIdx];
 				//Trace 거리 안에 포함되는 점의 갯수에 따라 처리
 				//0개인 경우
 				if (arrInRangePointIdx.Num() == 0)
@@ -194,21 +194,21 @@ TArray<FVector> ALineOfSightActor::GetDetectedPoints()
 
 		}
 
+		//Point와 Mesh를 맵핑한 다음 서로 다른 Mesh 위에 있는 Point롤 삼각형을 만들시 그 사이를 Trace해야
 		//Forward 벡터와의 내적을 왼쪽 Trace 벡터와 비교하여 크다면 시야범위 내에 있음
-		for (const FVector& p : arrValidPoints)
+		for (const FMeshPoint& p : arrValidPoints)
 		{
-			FVector v = p - m_vActorLoc;
+			FVector v = p.point - m_vActorLoc;
 			v.Normalize();
-			if (vForward.Dot(v) >= dFLDot && FVector::Dist(m_vActorLoc, p) <= m_fTraceLength)
+			if (vForward.Dot(v) >= dFLDot && FVector::Dist(m_vActorLoc, p.point) <= m_fTraceLength)
 			{
 				result.Add(p);
-				break;
 			}
 		}
 	}
 
 	//모든 점을 다시 각도로 정렬
-	result.Sort([&](const FVector& lhs, const FVector& rhs) { return SortByAngle(lhs, rhs); });
+	result.Sort([&](const FMeshPoint& lhs, const FMeshPoint& rhs) { return SortByAngle(lhs, rhs); });
 
 	return result;
 }
@@ -224,7 +224,7 @@ void ALineOfSightActor::AddAdjMesh(UStaticMeshComponent* _pMeshCom)
 			if (UNavCollisionBase* pNavCol = pMesh->GetNavCollision())
 			{
 				//Actor의 Z값이상인 것만 필터링
-				TArray<FVector>& arrPoints = m_mapDetectedObstacles.Emplace(_pMeshCom);
+				TArray<FMeshPoint>& arrPoints = m_mapDetectedObstacles.Emplace(_pMeshCom);
 				float fActorPosZ = GetActorLocation().Z;
 				for (const FVector& p : pNavCol->GetConvexCollision().VertexBuffer)
 				{
@@ -232,7 +232,7 @@ void ALineOfSightActor::AddAdjMesh(UStaticMeshComponent* _pMeshCom)
 					if (tp.Z <= fActorPosZ)
 					{
 						//해당 Z 위치로 변경 후 추가
-						arrPoints.Emplace(tp.X, tp.Y, fActorPosZ);
+						arrPoints.Emplace(_pMeshCom, tp.X, tp.Y, fActorPosZ);
 					}
 				}
 			}
@@ -250,10 +250,10 @@ void ALineOfSightActor::RemoveAdjMesh(UStaticMeshComponent* _pMeshCom)
 	}
 }
 
-bool ALineOfSightActor::SortByAngle(const FVector& lhs, const FVector& rhs)
+bool ALineOfSightActor::SortByAngle(const FMeshPoint& lhs, const FMeshPoint& rhs)
 {
-	FVector v1 = lhs - m_vActorLoc;
-	FVector v2 = rhs - m_vActorLoc;
+	FVector v1 = lhs.point - m_vActorLoc;
+	FVector v2 = rhs.point - m_vActorLoc;
 
 	double rot1 = v1.Rotation().Yaw >= 0 ? v1.Rotation().Yaw : 360 + v1.Rotation().Yaw;
 	double rot2 = v2.Rotation().Yaw >= 0 ? v2.Rotation().Yaw : 360 + v2.Rotation().Yaw;

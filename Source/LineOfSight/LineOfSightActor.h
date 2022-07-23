@@ -6,13 +6,27 @@
 #include "GameFramework/Actor.h"
 #include "LineOfSightActor.generated.h"
 
+USTRUCT(Blueprintable)
+struct FMeshPoint
+{
+	GENERATED_USTRUCT_BODY()
+
+	UPROPERTY(BlueprintReadOnly, DisplayName = "Mesh")
+	UStaticMeshComponent* mesh;
+	UPROPERTY(BlueprintReadOnly, DisplayName = "Point")
+	FVector point;
+
+	FMeshPoint() = default;
+	FMeshPoint(UStaticMeshComponent* _mesh, double _x, double _y, double _z) : mesh(_mesh), point(_x, _y, _z) {}
+};
+
 UCLASS()
 class LINEOFSIGHT_API ALineOfSightActor : public AActor
 {
 	GENERATED_BODY()
 
 	TArray<UStaticMeshComponent*> m_arrAdjMeshes;
-	TMap<UStaticMeshComponent*, TArray<FVector>> m_mapDetectedObstacles;
+	TMap<UStaticMeshComponent*, TArray<FMeshPoint>> m_mapDetectedObstacles;
 	double m_dBaseAngle;
 	FVector m_vActorLoc;
 
@@ -32,7 +46,7 @@ protected:
 
 public:
 	UFUNCTION(BlueprintCallable)
-	TArray<FVector> GetDetectedPoints();
+	TArray<FMeshPoint> GetDetectedPoints();
 
 public:
 	ALineOfSightActor();
@@ -44,5 +58,5 @@ public:
 	void RemoveAdjMesh(UStaticMeshComponent* _pMesh);
 
 private:
-	bool SortByAngle(const FVector& lhs, const FVector& rhs);
+	bool SortByAngle(const FMeshPoint& lhs, const FMeshPoint& rhs);
 };
