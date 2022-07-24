@@ -23,8 +23,6 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 	const FVector& vRightTrace = vForward.RotateAngleAxis(m_dViewAngle / 2, FVector3d::UpVector);
 	double dTraceLengthSquared = m_dTraceLength * m_dTraceLength;
 
-	m_dBaseAngle = vBack.Rotation().Yaw >= 0 ? vBack.Rotation().Yaw : 360 + vBack.Rotation().Yaw;
-
 	double dFLDot = vForward.Dot(vLeftTrace);
 
 	if (m_bIsShowTraceDebug)
@@ -36,24 +34,28 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 	for (const auto& pair : m_mapDetectedObstacles)
 	{
 		UStaticMeshComponent* pMeshCom = pair.Key;
+		//장애물과 시점으로의 벡터를 기준으로 점들의 각도를 계산
+		const FVector& vAngleBase = (m_vActorLoc - pMeshCom->GetOwner()->GetActorLocation()).GetUnsafeNormal();
+		m_dBaseAngle = vAngleBase.Rotation().Yaw >= 0 ? vAngleBase.Rotation().Yaw : 360 + vAngleBase.Rotation().Yaw;
 		UE_LOG(LogTemp, Log, TEXT("%s"), *UKismetSystemLibrary::GetDisplayName(pMeshCom->GetOwner()));
+		DrawDebugLine(GetWorld(), m_vActorLoc, m_vActorLoc + vAngleBase * 500, FColor::Red, false, -1, 1);
 
 		TArray<FMeshPoint> arrPoints = pair.Value;
 
-		//4점 모두 범위 안에 없으면 스킵
-		bool bVaild = false;
-		for (const FMeshPoint& p : arrPoints)
-		{
-			FVector v = (p.point - m_vActorLoc).GetUnsafeNormal();
-			if (vForward.Dot(v) + .001 >= dFLDot)
-			{
-				bVaild = true;
-				break;
-			}
-		}
+		////4점 모두 범위 안에 없으면 스킵
+		//bool bVaild = false;
+		//for (const FMeshPoint& p : arrPoints)
+		//{
+		//	FVector v = (p.point - m_vActorLoc).GetUnsafeNormal();
+		//	if (vForward.Dot(v) + .001 >= dFLDot)
+		//	{
+		//		bVaild = true;
+		//		break;
+		//	}
+		//}
 
-		if(!bVaild)
-			continue;
+		//if(!bVaild)
+		//	continue;
 
 		TArray<FMeshPoint> arrValidPoints;
 		//각도에 따라 정렬
@@ -153,7 +155,7 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 			else
 			{
 				//뒤쪽 점들은 고려 안함
-				arrInRangePointIdx.RemoveAll([](int e){return e == 1 || e == 2;});
+				arrInRangePointIdx.RemoveAll([](int e) {return e == 1 || e == 2; });
 
 				UE_LOG(LogTemp, Log, TEXT("1"));
 				//Trace 거리 안에 포함되는 점의 갯수에 따라 처리
@@ -174,12 +176,29 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 					//각 점이 시점과 종점 사이에 있는지 체크
 					if (isLeftCrossPointValid)
 					{
-						isLeftCrossPointValid = vLeftTrace.Equals((vLeftPoint - m_vActorLoc).GetUnsafeNormal()) && FVector::DistSquared(m_vActorLoc, vLeftPoint) <= dTraceLengthSquared;
+						isLeftCrossPointValid = vLeftTrace.Equals((vLeftPoint - m_vActorLoc).GetUnsafeNormal()) &&
+							FVector::DistSquared(m_vActorLoc, vLeftPoint) <= dTraceLengthSquared;
 					}
 
 					if (isRightCrossPointValid)
 					{
-						isRightCrossPointValid = vRightTrace.Equals((vRightPoint - m_vActorLoc).GetUnsafeNormal()) && FVector::DistSquared(m_vActorLoc, vRightPoint) <= dTraceLengthSquared;
+						isRightCrossPointValid = vRightTrace.Equals((vRightPoint - m_vActorLoc).GetUnsafeNormal()) &&
+							FVector::DistSquared(m_vActorLoc, vRightPoint) <= dTraceLengthSquared;
+					}
+
+					//큐브 쪽 점 사이에 있는지 체크
+					FVector vTemp = (vMostLeftPoint.point - vMostRightPoint.point).GetUnsafeNormal();
+					double dTemp = FVector::DistSquared(vMostLeftPoint.point, vMostRightPoint.point);
+					if (isLeftCrossPointValid)
+					{
+						isLeftCrossPointValid = FVector::DistSquared(vMostLeftPoint.point, vLeftPoint) <= dTemp &&
+							vTemp.Equals((vLeftPoint - vMostLeftPoint.point).GetUnsafeNormal());
+					}
+
+					if (isRightCrossPointValid)
+					{
+						isRightCrossPointValid = FVector::DistSquared(vMostLeftPoint.point, vRightPoint) <= dTemp &&
+							vTemp.Equals((vRightPoint - vMostLeftPoint.point).GetUnsafeNormal());
 					}
 
 					//거리 밖이라면 유효한 점이 아니므로 해당 점을 다시 계산
@@ -205,6 +224,7 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 							double t = (-b - FMath::Sqrt(squared)) / (2 * a);
 							vLeftPoint = vMostLeftPoint.point + v * t;
 							vLeftPoint.Z = m_vActorLoc.Z;
+							isLeftCrossPointValid = true;
 						}
 
 						if (!isRightCrossPointValid)
@@ -213,11 +233,15 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 							double t = (-b + FMath::Sqrt(squared)) / (2 * a);
 							vRightPoint = vMostLeftPoint.point + v * t;
 							vRightPoint.Z = m_vActorLoc.Z;
+							isRightCrossPointValid = true;
 						}
 					}
 
-					arrValidPoints.Emplace(pMeshCom, vLeftPoint, false);
-					arrValidPoints.Emplace(pMeshCom, vRightPoint, false);
+					if (isLeftCrossPointValid)
+						arrValidPoints.Emplace(pMeshCom, vLeftPoint, false);
+
+					if (isRightCrossPointValid)
+						arrValidPoints.Emplace(pMeshCom, vRightPoint, false);
 
 					DrawDebugPoint(GetWorld(), vLeftPoint, 10, FColor::Blue, false, -1, 1);
 					DrawDebugPoint(GetWorld(), vRightPoint, 10, FColor::Red, false, -1, 1);
