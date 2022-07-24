@@ -216,20 +216,21 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 							FVector::DistSquared(m_vActorLoc, vRightPoint) <= dTraceLengthSquared;
 					}
 
+					//TODO: 양쪽 Trace 벡터와 점과의 벡터들이 겹치는지를 확인해야
 					////큐브 쪽 점 사이에 있는지 체크
-					//FVector vTemp = (vMostLeftPoint.point - vMostRightPoint.point).GetUnsafeNormal();
-					//double dTemp = FVector::DistSquared(vMostLeftPoint.point, vMostRightPoint.point);
-					//if (isLeftCrossPointValid)
-					//{
-					//	isLeftCrossPointValid = FVector::DistSquared(vMostLeftPoint.point, vLeftPoint) <= dTemp &&
-					//		vTemp.Equals((vLeftPoint - vMostLeftPoint.point).GetUnsafeNormal());
-					//}
+					FVector vTemp = (vMostRightPoint.point - vMostLeftPoint.point).GetUnsafeNormal();
+					double dTemp = FVector::DistSquared(vMostLeftPoint.point, vMostRightPoint.point);
+					if (isLeftCrossPointValid)
+					{
+						isLeftCrossPointValid = FVector::DistSquared(vMostLeftPoint.point, vLeftPoint) <= dTemp &&
+							vTemp.Equals((vLeftPoint - vMostLeftPoint.point).GetUnsafeNormal());
+					}
 
-					//if (isRightCrossPointValid)
-					//{
-					//	isRightCrossPointValid = FVector::DistSquared(vMostLeftPoint.point, vRightPoint) <= dTemp &&
-					//		vTemp.Equals((vRightPoint - vMostLeftPoint.point).GetUnsafeNormal());
-					//}
+					if (isRightCrossPointValid)
+					{
+						isRightCrossPointValid = FVector::DistSquared(vMostLeftPoint.point, vRightPoint) <= dTemp &&
+							vTemp.Equals((vRightPoint - vMostLeftPoint.point).GetUnsafeNormal());
+					}
 
 					//거리 밖이라면 유효한 점이 아니므로 해당 점을 다시 계산
 					//시점과 직선 간의 거리가 시야거리만큼인 점을 계산
@@ -360,7 +361,7 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 			FVector v = p.point - m_vActorLoc;
 			v.Normalize();
 
-			DrawDebugPoint(GetWorld(), p.point, 10, FColor::Red, false, -1, 1);
+			//DrawDebugPoint(GetWorld(), p.point, 10, FColor::Red, false, -1, 1);
 
 			if (vForward.Dot(v) + .001 >= dFLDot)
 			{
