@@ -69,7 +69,9 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 			//1면만 보고 있는지 2면을 보고 있는지 구분
 			//가운데 각도 2개 중 가장 가까운 점이 있다면 2면, 아니라면 1면
 			TArray<int> arrInRangePointIdx;
+			double dMaxDis = -1;
 			double dMinDis = MAX_dbl;
+			int iMaxIdx = 0;
 			int iMinIdx = 0;
 			for (int i = 0; i < 4; ++i)
 			{
@@ -80,11 +82,40 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 					iMinIdx = i;
 				}
 
+				if (dis > dMaxDis)
+				{
+					dMaxDis = dis;
+					iMaxIdx = i;
+				}
+
 				//시야범위 안에 있는지 체크
 				FVector v = (arrPoints[i].point - m_vActorLoc).GetUnsafeNormal();
 				if (dis <= dTraceLengthSquared && vForward.Dot(v) + .001 >= dFLDot)
 				{
 					arrInRangePointIdx.Add(i);
+				}
+			}
+
+			bool bIsTwoSide = iMinIdx == 1 || iMinIdx == 2;
+
+			FMeshPoint vMostLeftPoint = arrPoints[0];
+			FMeshPoint vMostRightPoint = arrPoints[3];
+
+			if (bIsTwoSide)
+			{
+				FVector v = (arrPoints[iMinIdx].point - m_vActorLoc).GetUnsafeNormal();
+				//2면을 볼 수 있는 위치에서 1면만 보는 경우
+				if (vForward.Dot(v) + .001 < dFLDot)
+				{
+					bIsTwoSide = false;
+					if (GetActorRightVector().Dot((arrPoints[iMinIdx].point - m_vActorLoc).GetUnsafeNormal()) > 0)
+					{
+						vMostRightPoint = arrPoints[iMinIdx];
+					}
+					else
+					{
+						vMostLeftPoint = arrPoints[iMinIdx];
+					}
 				}
 			}
 
@@ -95,10 +126,9 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 
 
 			UE_LOG(LogTemp, Log, TEXT("arrInRangePointIdx.Num %d"), arrInRangePointIdx.Num());
-			const FMeshPoint& vMostLeftPoint = arrPoints[0];
-			const FMeshPoint& vMostRightPoint = arrPoints[3];
+
 			//2면인 경우
-			if (iMinIdx == 1 || iMinIdx == 2)
+			if (bIsTwoSide)
 			{
 				UE_LOG(LogTemp, Log, TEXT("2"));
 				const FMeshPoint& vMidPoint = arrPoints[iMinIdx];
@@ -186,20 +216,20 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 							FVector::DistSquared(m_vActorLoc, vRightPoint) <= dTraceLengthSquared;
 					}
 
-					//큐브 쪽 점 사이에 있는지 체크
-					FVector vTemp = (vMostLeftPoint.point - vMostRightPoint.point).GetUnsafeNormal();
-					double dTemp = FVector::DistSquared(vMostLeftPoint.point, vMostRightPoint.point);
-					if (isLeftCrossPointValid)
-					{
-						isLeftCrossPointValid = FVector::DistSquared(vMostLeftPoint.point, vLeftPoint) <= dTemp &&
-							vTemp.Equals((vLeftPoint - vMostLeftPoint.point).GetUnsafeNormal());
-					}
+					////큐브 쪽 점 사이에 있는지 체크
+					//FVector vTemp = (vMostLeftPoint.point - vMostRightPoint.point).GetUnsafeNormal();
+					//double dTemp = FVector::DistSquared(vMostLeftPoint.point, vMostRightPoint.point);
+					//if (isLeftCrossPointValid)
+					//{
+					//	isLeftCrossPointValid = FVector::DistSquared(vMostLeftPoint.point, vLeftPoint) <= dTemp &&
+					//		vTemp.Equals((vLeftPoint - vMostLeftPoint.point).GetUnsafeNormal());
+					//}
 
-					if (isRightCrossPointValid)
-					{
-						isRightCrossPointValid = FVector::DistSquared(vMostLeftPoint.point, vRightPoint) <= dTemp &&
-							vTemp.Equals((vRightPoint - vMostLeftPoint.point).GetUnsafeNormal());
-					}
+					//if (isRightCrossPointValid)
+					//{
+					//	isRightCrossPointValid = FVector::DistSquared(vMostLeftPoint.point, vRightPoint) <= dTemp &&
+					//		vTemp.Equals((vRightPoint - vMostLeftPoint.point).GetUnsafeNormal());
+					//}
 
 					//거리 밖이라면 유효한 점이 아니므로 해당 점을 다시 계산
 					//시점과 직선 간의 거리가 시야거리만큼인 점을 계산
