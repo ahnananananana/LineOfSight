@@ -38,29 +38,23 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 		const FVector& vAngleBase = (m_vActorLoc - pMeshCom->GetOwner()->GetActorLocation()).GetUnsafeNormal();
 		m_dBaseAngle = vAngleBase.Rotation().Yaw >= 0 ? vAngleBase.Rotation().Yaw : 360 + vAngleBase.Rotation().Yaw;
 		UE_LOG(LogTemp, Log, TEXT("%s"), *UKismetSystemLibrary::GetDisplayName(pMeshCom->GetOwner()));
-		DrawDebugLine(GetWorld(), m_vActorLoc, m_vActorLoc + vAngleBase * 500, FColor::Red, false, -1, 1);
 
 		TArray<FMeshPoint> arrPoints = pair.Value;
-
-		////4점 모두 범위 안에 없으면 스킵
-		//bool bVaild = false;
-		//for (const FMeshPoint& p : arrPoints)
-		//{
-		//	FVector v = (p.point - m_vActorLoc).GetUnsafeNormal();
-		//	if (vForward.Dot(v) + .001 >= dFLDot)
-		//	{
-		//		bVaild = true;
-		//		break;
-		//	}
-		//}
-
-		//if(!bVaild)
-		//	continue;
-
 		TArray<FMeshPoint> arrValidPoints;
 		//각도에 따라 정렬
 		arrPoints.Sort([&](const FMeshPoint& lhs, const FMeshPoint& rhs) { return SortByAngle(lhs, rhs); });
 
+		//장애물이 시야각과 겹치는지 체크
+		const FVector& vObsLeft = (arrPoints[0].point - m_vActorLoc).GetUnsafeNormal();
+		const FVector& vObsRight = (arrPoints.Last().point - m_vActorLoc).GetUnsafeNormal();
+
+		double dObsDot = vObsRight.Dot(vObsLeft);
+		if (!(vObsLeft.Dot(vLeftTrace) >= dObsDot && vObsRight.Dot(vLeftTrace) >= dObsDot) &&
+			!(vObsLeft.Dot(vRightTrace) >= dObsDot && vObsRight.Dot(vRightTrace) >= dObsDot))
+		{
+			continue;
+		}
+		
 		//점 갯수로 큐브인지 원기둥인지 구분
 		//큐브인 경우
 		if (arrPoints.Num() == 4)
@@ -218,7 +212,7 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 
 					//TODO: 양쪽 Trace 벡터와 점과의 벡터들이 겹치는지를 확인해야
 					////큐브 쪽 점 사이에 있는지 체크
-					FVector vTemp = (vMostRightPoint.point - vMostLeftPoint.point).GetUnsafeNormal();
+					/*FVector vTemp = (vMostRightPoint.point - vMostLeftPoint.point).GetUnsafeNormal();
 					double dTemp = FVector::DistSquared(vMostLeftPoint.point, vMostRightPoint.point);
 					if (isLeftCrossPointValid)
 					{
@@ -230,7 +224,7 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 					{
 						isRightCrossPointValid = FVector::DistSquared(vMostLeftPoint.point, vRightPoint) <= dTemp &&
 							vTemp.Equals((vRightPoint - vMostLeftPoint.point).GetUnsafeNormal());
-					}
+					}*/
 
 					//거리 밖이라면 유효한 점이 아니므로 해당 점을 다시 계산
 					//시점과 직선 간의 거리가 시야거리만큼인 점을 계산
