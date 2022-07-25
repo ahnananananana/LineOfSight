@@ -24,14 +24,6 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 	return m_arrDetectedPoints;
 }
 
-TArray<FVector> ALineOfSightActor::GetEdgeRays()
-{
-	if (!m_bIsPointCalculated)
-		CalculateValidPoints();
-
-	return m_arrEdgeRays;
-}
-
 void ALineOfSightActor::AddAdjMesh(UStaticMeshComponent* _pMeshCom)
 {
 	UE_LOG(LogTemp, Log, TEXT("AddAdjMesh"));
@@ -102,11 +94,11 @@ FMeshPoint ALineOfSightActor::GetTracedPoint(const FVector& _vBasePoint, double 
 	FHitResult result;
 	if (UKismetSystemLibrary::LineTraceSingle(GetWorld(), m_vActorLoc, rTraceEnd, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, temp, EDrawDebugTrace::Type::ForOneFrame, result, true))
 	{
-		return { result.GetActor()->FindComponentByClass<UStaticMeshComponent>(), result.Location, false };
+		return { result.GetActor()->FindComponentByClass<UStaticMeshComponent>(), result.Location };
 	}
 	else
 	{
-		return { nullptr, rTraceEnd, false };
+		return { nullptr, rTraceEnd };
 	}
 }
 
@@ -114,10 +106,10 @@ void ALineOfSightActor::CalculateValidPoints()
 {
 	if (m_bIsPointCalculated)
 		return;
+
 	m_bIsPointCalculated = true;
 
 	m_arrDetectedPoints.Empty();
-	m_arrEdgeRays.Empty();
 
 	double dTraceAngleOffset = .001;
 
@@ -141,6 +133,7 @@ void ALineOfSightActor::CalculateValidPoints()
 	for (const auto& pair : m_mapDetectedObstacles)
 	{
 		UStaticMeshComponent* pMeshCom = pair.Key;
+		UKismetSystemLibrary::GetDisplayName(pMeshCom->GetOwner());
 		//장애물과 시점으로의 벡터를 기준으로 점들의 각도를 계산
 		const FVector& vAngleBase = (m_vActorLoc - pMeshCom->GetOwner()->GetActorLocation()).GetUnsafeNormal();
 		m_dBaseAngle = vAngleBase.Rotation().Yaw >= 0 ? vAngleBase.Rotation().Yaw : 360 + vAngleBase.Rotation().Yaw;
@@ -151,22 +144,24 @@ void ALineOfSightActor::CalculateValidPoints()
 		arrPoints.Sort([&](const FMeshPoint& lhs, const FMeshPoint& rhs) { return SortByAngle(lhs, rhs); });
 
 		//장애물이 시야각과 겹치는지 체크
-		bool bValid = false;
+		{
+			bool bValid = false;
 
-		const FVector& vObsLeft = (arrPoints[0].point - m_vActorLoc).GetUnsafeNormal();
-		const FVector& vObsRight = (arrPoints.Last().point - m_vActorLoc).GetUnsafeNormal();
+			const FVector& vObsLeft = (arrPoints[0].point - m_vActorLoc).GetUnsafeNormal();
+			const FVector& vObsRight = (arrPoints.Last().point - m_vActorLoc).GetUnsafeNormal();
 
-		double dObsDot = vObsRight.Dot(vObsLeft);
-		bValid |= vObsLeft.Dot(vLeftTrace) >= dObsDot && vObsRight.Dot(vLeftTrace) >= dObsDot ||
-			vObsLeft.Dot(vRightTrace) >= dObsDot && vObsRight.Dot(vRightTrace) >= dObsDot;
+			double dObsDot = vObsRight.Dot(vObsLeft);
+			bValid |= vObsLeft.Dot(vLeftTrace) >= dObsDot && vObsRight.Dot(vLeftTrace) >= dObsDot ||
+				vObsLeft.Dot(vRightTrace) >= dObsDot && vObsRight.Dot(vRightTrace) >= dObsDot;
 
-		//물체 전체가 시야각 안에 들어온 경우
-		dObsDot = vLeftTrace.Dot(vRightTrace);
-		bValid |= vObsLeft.Dot(vLeftTrace) >= dObsDot && vObsLeft.Dot(vRightTrace) >= dObsDot &&
-			vObsRight.Dot(vLeftTrace) >= dObsDot && vObsRight.Dot(vRightTrace) >= dObsDot;
+			//물체 전체가 시야각 안에 들어온 경우
+			dObsDot = vLeftTrace.Dot(vRightTrace);
+			bValid |= vObsLeft.Dot(vLeftTrace) >= dObsDot && vObsLeft.Dot(vRightTrace) >= dObsDot &&
+				vObsRight.Dot(vLeftTrace) >= dObsDot && vObsRight.Dot(vRightTrace) >= dObsDot;
 
-		if (!bValid)
-			continue;
+			if (!bValid)
+				continue;
+		}
 
 		//점 갯수로 큐브인지 원기둥인지 구분
 		//큐브인 경우
@@ -257,103 +252,36 @@ void ALineOfSightActor::CalculateValidPoints()
 						FVector vLeftPoint;
 						//일단 왼쪽 Trace 벡터와 오른쪽 Trace 벡터 방향의 직선과의 교점 계산
 						FVector vLeftTraceEnd = m_vActorLoc + vLeftTrace * m_dTraceLength;
-						bool isLeftCrossPointValid = TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, vMostLeftPoint.point, vMidPoint.point, vLeftPoint);
-
-						vLeftPoint.Z = m_vActorLoc.Z;
-
-						//각 점이 시점과 종점 사이에 있는지 체크
-						if (isLeftCrossPointValid)
-						{
-							isLeftCrossPointValid = vLeftTrace.Equals((vLeftPoint - m_vActorLoc).GetUnsafeNormal()) &&
-								FVector::DistSquared(m_vActorLoc, vLeftPoint) <= dTraceLengthSquared;
-						}
 
 						//거리 밖이라면 유효한 점이 아니므로 해당 점을 다시 계산
 						//시점과 직선 간의 거리가 시야거리만큼인 점을 계산
-						if (!isLeftCrossPointValid)
+						if (!TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, vLeftTrace, vMostLeftPoint.point, vMidPoint.point, dTraceLengthSquared, vLeftPoint))
 						{
-							FVector v = (vMidPoint.point - vMostLeftPoint.point).GetUnsafeNormal();
-
-							double A = vMostLeftPoint.point.X - m_vActorLoc.X;
-							double B = vMostLeftPoint.point.Y - m_vActorLoc.Y;
-							double C = v.X;
-							double D = v.Y;
-
-							double a = C * C + D * D;
-							double b = 2 * A * C + 2 * B * D;
-							double c = A * A + B * B - dTraceLengthSquared;
-
-							double squared = b * b - 4 * a * c;
-
-							if (!isLeftCrossPointValid)
-							{
-								//Left Point에서 출발하기에 더 가까워야하므로 -
-								double t = (-b - FMath::Sqrt(squared)) / (2 * a);
-								vLeftPoint = vMostLeftPoint.point + v * t;
-								vLeftPoint.Z = m_vActorLoc.Z;
-								isLeftCrossPointValid = true;
-							}
+							vLeftPoint = FindLeftPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMidPoint.point, dTraceLengthSquared);
 						}
 
-						if (isLeftCrossPointValid)
-						{
-							arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, dTraceAngleOffset));
-							arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, -dTraceAngleOffset));
-						}
+						arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, dTraceAngleOffset));
+						arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, -dTraceAngleOffset));
 
 						DrawDebugPoint(GetWorld(), vLeftPoint, 10, FColor::Blue, false, -1, 1);
 					}
 
-					//가운데 점과 양쪽 점 사이의 점을 각각 계산하여 추가
 					arrValidPoints.Emplace(GetTracedPoint(vMidPoint.point, 0));
 
 					{
 						FVector vRightPoint;
 						//일단 왼쪽 Trace 벡터와 오른쪽 Trace 벡터 방향의 직선과의 교점 계산
 						FVector vRightTraceEnd = m_vActorLoc + vRightTrace * m_dTraceLength;
-						bool isRightCrossPointValid = TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, vMidPoint.point, vMostRightPoint.point, vRightPoint);
-
-						vRightPoint.Z = m_vActorLoc.Z;
-
-						//각 점이 시점과 종점 사이에 있는지 체크
-						if (isRightCrossPointValid)
-						{
-							isRightCrossPointValid = vRightTrace.Equals((vRightPoint - m_vActorLoc).GetUnsafeNormal()) &&
-								FVector::DistSquared(m_vActorLoc, vRightPoint) <= dTraceLengthSquared;
-						}
 
 						//거리 밖이라면 유효한 점이 아니므로 해당 점을 다시 계산
 						//시점과 직선 간의 거리가 시야거리만큼인 점을 계산
-						if (!isRightCrossPointValid)
+						if (!TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, vRightTrace, vMidPoint.point, vMostRightPoint.point, dTraceLengthSquared, vRightPoint))
 						{
-							FVector v = (vMostRightPoint.point - vMidPoint.point).GetUnsafeNormal();
-
-							double A = vMidPoint.point.X - m_vActorLoc.X;
-							double B = vMidPoint.point.Y - m_vActorLoc.Y;
-							double C = v.X;
-							double D = v.Y;
-
-							double a = C * C + D * D;
-							double b = 2 * A * C + 2 * B * D;
-							double c = A * A + B * B - dTraceLengthSquared;
-
-							double squared = b * b - 4 * a * c;
-
-							if (!isRightCrossPointValid)
-							{
-								//Left Point에서 출발하기에 더 멀어야하므로 +
-								double t = (-b + FMath::Sqrt(squared)) / (2 * a);
-								vRightPoint = vMidPoint.point + v * t;
-								vRightPoint.Z = m_vActorLoc.Z;
-								isRightCrossPointValid = true;
-							}
+							vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMidPoint.point, vMostRightPoint.point, dTraceLengthSquared);
 						}
 
-						if (isRightCrossPointValid)
-						{
-							arrValidPoints.Emplace(GetTracedPoint(vRightPoint, dTraceAngleOffset));
-							arrValidPoints.Emplace(GetTracedPoint(vRightPoint, -dTraceAngleOffset));
-						}
+						arrValidPoints.Emplace(GetTracedPoint(vRightPoint, dTraceAngleOffset));
+						arrValidPoints.Emplace(GetTracedPoint(vRightPoint, -dTraceAngleOffset));
 
 						DrawDebugPoint(GetWorld(), vRightPoint, 10, FColor::Red, false, -1, 1);
 					}
@@ -369,49 +297,14 @@ void ALineOfSightActor::CalculateValidPoints()
 							FVector vRightPoint;
 							//일단 왼쪽 Trace 벡터와 오른쪽 Trace 벡터 방향의 직선과의 교점 계산
 							FVector vRightTraceEnd = m_vActorLoc + vRightTrace * m_dTraceLength;
-							bool isRightCrossPointValid = TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, vMidPoint.point, vMostRightPoint.point, vRightPoint);
 
-							vRightPoint.Z = m_vActorLoc.Z;
-
-							//각 점이 시점과 종점 사이에 있는지 체크
-							if (isRightCrossPointValid)
+							if (!TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, vRightTrace, vMidPoint.point, vMostRightPoint.point, dTraceLengthSquared, vRightPoint))
 							{
-								isRightCrossPointValid = vRightTrace.Equals((vRightPoint - m_vActorLoc).GetUnsafeNormal()) &&
-									FVector::DistSquared(m_vActorLoc, vRightPoint) <= dTraceLengthSquared;
+								vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMidPoint.point, vMostRightPoint.point, dTraceLengthSquared);
 							}
 
-							//거리 밖이라면 유효한 점이 아니므로 해당 점을 다시 계산
-							//시점과 직선 간의 거리가 시야거리만큼인 점을 계산
-							if (!isRightCrossPointValid)
-							{
-								FVector v = (vMostRightPoint.point - vMidPoint.point).GetUnsafeNormal();
-
-								double A = vMidPoint.point.X - m_vActorLoc.X;
-								double B = vMidPoint.point.Y - m_vActorLoc.Y;
-								double C = v.X;
-								double D = v.Y;
-
-								double a = C * C + D * D;
-								double b = 2 * A * C + 2 * B * D;
-								double c = A * A + B * B - dTraceLengthSquared;
-
-								double squared = b * b - 4 * a * c;
-
-								if (!isRightCrossPointValid)
-								{
-									//Left Point에서 출발하기에 더 멀어야하므로 +
-									double t = (-b + FMath::Sqrt(squared)) / (2 * a);
-									vRightPoint = vMidPoint.point + v * t;
-									vRightPoint.Z = m_vActorLoc.Z;
-									isRightCrossPointValid = true;
-								}
-							}
-
-							if (isRightCrossPointValid)
-							{
-								arrValidPoints.Emplace(GetTracedPoint(vRightPoint, -dTraceAngleOffset));
-								arrValidPoints.Emplace(GetTracedPoint(vRightPoint, dTraceAngleOffset));
-							}
+							arrValidPoints.Emplace(GetTracedPoint(vRightPoint, -dTraceAngleOffset));
+							arrValidPoints.Emplace(GetTracedPoint(vRightPoint, dTraceAngleOffset));
 
 							DrawDebugPoint(GetWorld(), vRightPoint, 10, FColor::Red, false, -1, 1);
 						}
@@ -428,49 +321,14 @@ void ALineOfSightActor::CalculateValidPoints()
 							FVector vLeftPoint;
 							//일단 왼쪽 Trace 벡터와 오른쪽 Trace 벡터 방향의 직선과의 교점 계산
 							FVector vLeftTraceEnd = m_vActorLoc + vLeftTrace * m_dTraceLength;
-							bool isLeftCrossPointValid = TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, vMostLeftPoint.point, vMidPoint.point, vLeftPoint);
 
-							vLeftPoint.Z = m_vActorLoc.Z;
-
-							//각 점이 시점과 종점 사이에 있는지 체크
-							if (isLeftCrossPointValid)
+							if (!TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, vLeftTrace, vMostLeftPoint.point, vMidPoint.point, dTraceLengthSquared, vLeftPoint))
 							{
-								isLeftCrossPointValid = vLeftTrace.Equals((vLeftPoint - m_vActorLoc).GetUnsafeNormal()) &&
-									FVector::DistSquared(m_vActorLoc, vLeftPoint) <= dTraceLengthSquared;
+								vLeftPoint = FindLeftPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMidPoint.point, dTraceLengthSquared);
 							}
 
-							//거리 밖이라면 유효한 점이 아니므로 해당 점을 다시 계산
-							//시점과 직선 간의 거리가 시야거리만큼인 점을 계산
-							if (!isLeftCrossPointValid)
-							{
-								FVector v = (vMidPoint.point - vMostLeftPoint.point).GetUnsafeNormal();
-
-								double A = vMostLeftPoint.point.X - m_vActorLoc.X;
-								double B = vMostLeftPoint.point.Y - m_vActorLoc.Y;
-								double C = v.X;
-								double D = v.Y;
-
-								double a = C * C + D * D;
-								double b = 2 * A * C + 2 * B * D;
-								double c = A * A + B * B - dTraceLengthSquared;
-
-								double squared = b * b - 4 * a * c;
-
-								if (!isLeftCrossPointValid)
-								{
-									//Left Point에서 출발하기에 더 가까워야하므로 -
-									double t = (-b - FMath::Sqrt(squared)) / (2 * a);
-									vLeftPoint = vMostLeftPoint.point + v * t;
-									vLeftPoint.Z = m_vActorLoc.Z;
-									isLeftCrossPointValid = true;
-								}
-							}
-
-							if (isLeftCrossPointValid)
-							{
-								arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, -dTraceAngleOffset));
-								arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, dTraceAngleOffset));
-							}
+							arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, -dTraceAngleOffset));
+							arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, dTraceAngleOffset));
 
 							DrawDebugPoint(GetWorld(), vLeftPoint, 10, FColor::Blue, false, -1, 1);
 						}
@@ -503,68 +361,20 @@ void ALineOfSightActor::CalculateValidPoints()
 					FVector vLeftPoint, vRightPoint;
 					//일단 왼쪽 Trace 벡터와 오른쪽 Trace 벡터 방향의 직선과의 교점 계산
 					FVector vLeftTraceEnd = m_vActorLoc + vLeftTrace * m_dTraceLength;
-					bool isLeftCrossPointValid = TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, vMostLeftPoint.point, vMostRightPoint.point, vLeftPoint);
-
 					FVector vRightTraceEnd = m_vActorLoc + vRightTrace * m_dTraceLength;
-					bool isRightCrossPointValid = TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, vMostLeftPoint.point, vMostRightPoint.point, vRightPoint);
 
-					vLeftPoint.Z = m_vActorLoc.Z;
-					vRightPoint.Z = m_vActorLoc.Z;
-
-					//각 점이 시점과 종점 사이에 있는지 체크
-					if (isLeftCrossPointValid)
+					if (!TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, vLeftTrace, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared, vLeftPoint))
 					{
-						isLeftCrossPointValid = vLeftTrace.Equals((vLeftPoint - m_vActorLoc).GetUnsafeNormal()) &&
-							FVector::DistSquared(m_vActorLoc, vLeftPoint) <= dTraceLengthSquared;
+						vLeftPoint = FindLeftPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared);
 					}
 
-					if (isRightCrossPointValid)
+					if (!TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, vRightTrace, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared, vRightPoint))
 					{
-						isRightCrossPointValid = vRightTrace.Equals((vRightPoint - m_vActorLoc).GetUnsafeNormal()) &&
-							FVector::DistSquared(m_vActorLoc, vRightPoint) <= dTraceLengthSquared;
+						vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared);
 					}
 
-					//거리 밖이라면 유효한 점이 아니므로 해당 점을 다시 계산
-					//시점과 직선 간의 거리가 시야거리만큼인 점을 계산
-					if (!isLeftCrossPointValid || !isRightCrossPointValid)
-					{
-						FVector v = (vMostRightPoint.point - vMostLeftPoint.point).GetUnsafeNormal();
-
-						double A = vMostLeftPoint.point.X - m_vActorLoc.X;
-						double B = vMostLeftPoint.point.Y - m_vActorLoc.Y;
-						double C = v.X;
-						double D = v.Y;
-
-						double a = C * C + D * D;
-						double b = 2 * A * C + 2 * B * D;
-						double c = A * A + B * B - dTraceLengthSquared;
-
-						double squared = b * b - 4 * a * c;
-
-						if (!isLeftCrossPointValid)
-						{
-							//Left Point에서 출발하기에 더 가까워야하므로 -
-							double t = (-b - FMath::Sqrt(squared)) / (2 * a);
-							vLeftPoint = vMostLeftPoint.point + v * t;
-							vLeftPoint.Z = m_vActorLoc.Z;
-							isLeftCrossPointValid = true;
-						}
-
-						if (!isRightCrossPointValid)
-						{
-							//Left Point에서 출발하기에 더 멀어야하므로 +
-							double t = (-b + FMath::Sqrt(squared)) / (2 * a);
-							vRightPoint = vMostLeftPoint.point + v * t;
-							vRightPoint.Z = m_vActorLoc.Z;
-							isRightCrossPointValid = true;
-						}
-					}
-
-					if (isLeftCrossPointValid)
-						arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, 0));
-
-					if (isRightCrossPointValid)
-						arrValidPoints.Emplace(GetTracedPoint(vRightPoint, 0));
+					arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, 0));
+					arrValidPoints.Emplace(GetTracedPoint(vRightPoint, 0));
 
 					DrawDebugPoint(GetWorld(), vLeftPoint, 10, FColor::Blue, false, -1, 1);
 					DrawDebugPoint(GetWorld(), vRightPoint, 10, FColor::Red, false, -1, 1);
@@ -578,9 +388,7 @@ void ALineOfSightActor::CalculateValidPoints()
 						//오른쪽 Trace 벡터와의 교점 계산
 						FVector vRightPoint;
 						FVector vRightTraceEnd = m_vActorLoc + vRightTrace * m_dTraceLength;
-						TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, vMostLeftPoint.point, vMostRightPoint.point, vRightPoint);
-
-						vRightPoint.Z = m_vActorLoc.Z;
+						TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, vRightTrace, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared, vRightPoint);
 
 						arrValidPoints.Emplace(GetTracedPoint(vMostLeftPoint.point, dTraceAngleOffset));
 						arrValidPoints.Emplace(GetTracedPoint(vMostLeftPoint.point, -dTraceAngleOffset));
@@ -592,9 +400,7 @@ void ALineOfSightActor::CalculateValidPoints()
 						//계산된 점 중 왼쪽 점에 가까운 점을 추가
 						FVector vLeftPoint;
 						FVector vLeftTraceEnd = m_vActorLoc + vLeftTrace * m_dTraceLength;
-						TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, vMostLeftPoint.point, vMostRightPoint.point, vLeftPoint);
-
-						vLeftPoint.Z = m_vActorLoc.Z;
+						TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, vLeftTrace, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared, vLeftPoint);
 
 						arrValidPoints.Emplace(GetTracedPoint(vMostRightPoint.point, dTraceAngleOffset));
 						arrValidPoints.Emplace(GetTracedPoint(vMostRightPoint.point, -dTraceAngleOffset));
@@ -606,45 +412,13 @@ void ALineOfSightActor::CalculateValidPoints()
 					}
 				}
 				//2개인 경우
-				else// if (arrInRangePointIdx.Num() == 2)
+				else
 				{
 					arrValidPoints.Emplace(GetTracedPoint(vMostRightPoint.point, dTraceAngleOffset));
 					arrValidPoints.Emplace(GetTracedPoint(vMostRightPoint.point, -dTraceAngleOffset));
 					arrValidPoints.Emplace(GetTracedPoint(vMostLeftPoint.point, dTraceAngleOffset));
 					arrValidPoints.Emplace(GetTracedPoint(vMostLeftPoint.point, -dTraceAngleOffset));
-					////뒤쪽 점이 있는 경우
-					//if (arrInRangePointIdx[0] != 0 || arrInRangePointIdx[1] != 3)
-					//{
-					//	//오른쪽 점과 왼쪽 점으로 이루어진 직선 위의 점 중
-					//	//시점과의 거리가 시야거리만큼 있는 2개의 점을 계산
-
-					//	//왼쪽 점이 포함된 경우
-					//	if (arrInRangePointIdx[0] == 0)
-					//	{
-					//		//계산된 점 중 오른쪽 점에 가까운 점을 추가
-					//		arrValidPoints.Emplace(vMostLeftPoint);
-					//	}
-					//	//오른쪽 점이 포함된 경우
-					//	else
-					//	{
-					//		//계산된 점 중 왼쪽 점에 가까운 점을 추가
-					//		arrValidPoints.Emplace(vMostRightPoint);
-					//	}
-					//}
-					////앞쪽 점들만 있는 경우
-					//else
-					//{
-					//	arrValidPoints.Emplace(vMostLeftPoint);
-					//	arrValidPoints.Emplace(vMostRightPoint);
-					//}
 				}
-				////3, 4개인 경우
-				//else
-				//{
-				//	//양 끝쪽에 있는 점만 추가
-				//	arrValidPoints.Emplace(vMostLeftPoint);
-				//	arrValidPoints.Emplace(vMostRightPoint);
-				//}
 			}
 		}
 		else
@@ -671,7 +445,7 @@ void ALineOfSightActor::CalculateValidPoints()
 	m_arrDetectedPoints.Sort([&](const FMeshPoint& lhs, const FMeshPoint& rhs) { return SortByAngle(lhs, rhs); });
 }
 
-bool ALineOfSightActor::TryFindTwoLineCrossPoint(const FVector& _p1, const FVector& _p2, const FVector& _p3, const FVector& _p4, FVector& _vCrossPoint)
+bool ALineOfSightActor::TryFindTwoLineCrossPoint(const FVector& _p1, const FVector& _p2, const FVector& vP1P2, const FVector& _p3, const FVector& _p4, double _dDistSquared, FVector& _vCrossPoint)
 {
 	double denominator = (_p1.X - _p2.X) * (_p3.Y - _p4.Y) - (_p1.Y - _p2.Y) * (_p3.X - _p4.X);
 	//평행하거나 일치하는 경우
@@ -680,6 +454,54 @@ bool ALineOfSightActor::TryFindTwoLineCrossPoint(const FVector& _p1, const FVect
 
 	_vCrossPoint.X = ((_p1.X * _p2.Y - _p1.Y * _p2.X) * (_p3.X - _p4.X) - (_p1.X - _p2.X) * (_p3.X * _p4.Y - _p3.Y * _p4.X)) / denominator;
 	_vCrossPoint.Y = ((_p1.X * _p2.Y - _p1.Y * _p2.X) * (_p3.Y - _p4.Y) - (_p1.Y - _p2.Y) * (_p3.X * _p4.Y - _p3.Y * _p4.X)) / denominator;
+	_vCrossPoint.Z = m_vActorLoc.Z;
 
-	return true;
+	//각 점이 시점과 종점 사이에 있는지 체크
+	return vP1P2.Equals((_vCrossPoint - _p1).GetUnsafeNormal()) && FVector::DistSquared(_p1, _vCrossPoint) <= _dDistSquared;
+}
+
+FVector ALineOfSightActor::FindLeftPointBetweenPointAndLine(const FVector& _vBasePoint, const FVector& _vLintPoint1, const FVector& _vLintPoint2, double _dLengthSquared)
+{
+	FVector v = (_vLintPoint2 - _vLintPoint1).GetUnsafeNormal();
+
+	double A = _vLintPoint1.X - m_vActorLoc.X;
+	double B = _vLintPoint1.Y - m_vActorLoc.Y;
+	double C = v.X;
+	double D = v.Y;
+
+	double a = C * C + D * D;
+	double b = 2 * A * C + 2 * B * D;
+	double c = A * A + B * B - _dLengthSquared;
+
+	double squared = b * b - 4 * a * c;
+
+	//출발점과 더 가까워야하므로 -
+	double t = (-b - FMath::Sqrt(squared)) / (2 * a);
+	
+	FVector vResult = _vLintPoint1 + v * t;
+	vResult.Z = m_vActorLoc.Z;
+	return vResult;
+}
+
+FVector ALineOfSightActor::FindRightPointBetweenPointAndLine(const FVector& _vBasePoint, const FVector& _vLintPoint1, const FVector& _vLintPoint2, double _dLengthSquared)
+{
+	FVector v = (_vLintPoint2 - _vLintPoint1).GetUnsafeNormal();
+
+	double A = _vLintPoint1.X - m_vActorLoc.X;
+	double B = _vLintPoint1.Y - m_vActorLoc.Y;
+	double C = v.X;
+	double D = v.Y;
+
+	double a = C * C + D * D;
+	double b = 2 * A * C + 2 * B * D;
+	double c = A * A + B * B - _dLengthSquared;
+
+	double squared = b * b - 4 * a * c;
+
+	//출발점과 더 가까워야하므로 -
+	double t = (-b + FMath::Sqrt(squared)) / (2 * a);
+
+	FVector vResult = _vLintPoint1 + v * t;
+	vResult.Z = m_vActorLoc.Z;
+	return vResult;
 }

@@ -15,12 +15,10 @@ struct FMeshPoint
 	FVector point;
 	UPROPERTY(BlueprintReadOnly, DisplayName = "Mesh")
 	UStaticMeshComponent* mesh;
-	UPROPERTY(BlueprintReadOnly, DisplayName = "Is Edge")
-	bool isEdge;
 
 	FMeshPoint() = default;
 	FMeshPoint(UStaticMeshComponent* _mesh, double _x, double _y, double _z) : mesh(_mesh), point(_x, _y, _z) {}
-	FMeshPoint(UStaticMeshComponent* _mesh, const FVector& _point, bool _isEdge) : mesh(_mesh), point(_point), isEdge(_isEdge) {}
+	FMeshPoint(UStaticMeshComponent* _mesh, const FVector& _point) : mesh(_mesh), point(_point) {}
 };
 
 UCLASS()
@@ -34,7 +32,6 @@ class LINEOFSIGHT_API ALineOfSightActor : public AActor
 	FVector m_vActorLoc;
 	bool m_bIsPointCalculated;
 	TArray<FMeshPoint> m_arrDetectedPoints;
-	TArray<FVector> m_arrEdgeRays;
 
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Vectex Trace Optimization", Category = "Line Of Sight")
@@ -55,8 +52,6 @@ protected:
 public:
 	UFUNCTION(BlueprintCallable)
 	TArray<FMeshPoint> GetDetectedPoints();
-	UFUNCTION(BlueprintCallable)
-	TArray<FVector> GetEdgeRays();
 
 	void Tick(float _fDelta) override;
 
@@ -74,5 +69,7 @@ public:
 private:
 	FMeshPoint GetTracedPoint(const FVector& _vBasePoint, double _dAngle);
 	void CalculateValidPoints();
-	bool TryFindTwoLineCrossPoint(const FVector& _p1,const FVector& _p2,const FVector& _p3,const FVector& _p4, FVector& _vCrossPoint);
+	bool TryFindTwoLineCrossPoint(const FVector& _p1, const FVector& _p2, const FVector& vP1P2, const FVector& _p3, const FVector& _p4, double _dDistSquared, FVector& _vCrossPoint);
+	FVector FindLeftPointBetweenPointAndLine(const FVector& _vBasePoint, const FVector& _vLintPoint1, const FVector& _vLintPoint2, double _dLengthSquared);
+	FVector FindRightPointBetweenPointAndLine(const FVector& _vBasePoint, const FVector& _vLintPoint1, const FVector& _vLintPoint2, double _dLengthSquared);
 };
