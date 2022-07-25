@@ -84,6 +84,38 @@ bool ALineOfSightActor::SortByAngle(const FMeshPoint& _lhs, const FMeshPoint& _r
 	return rot1 < rot2;
 }
 
+void ALineOfSightActor::AddPoint(const FVector& _vPoint, UStaticMeshComponent* _pMeshCom)
+{
+	TArray<AActor*> ignore{ _pMeshCom->GetOwner() };
+	FHitResult result;
+	if (!UKismetSystemLibrary::LineTraceSingle(GetWorld(), m_vActorLoc, _vPoint, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, ignore, EDrawDebugTrace::Type::ForOneFrame, result, true))
+	{
+		m_arrValidPoints.Emplace(_pMeshCom, _vPoint);
+	}
+}
+
+void ALineOfSightActor::AddEdgePoint(const FVector& _vPoint, UStaticMeshComponent* _pMeshCom, double _dAngleOffset)
+{
+	TArray<AActor*> ignore{ _pMeshCom->GetOwner() };
+	FHitResult result;
+	if (!UKismetSystemLibrary::LineTraceSingle(GetWorld(), m_vActorLoc, _vPoint, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, ignore, EDrawDebugTrace::Type::ForOneFrame, result, true))
+	{
+		m_arrValidPoints.Emplace(_pMeshCom, _vPoint);
+	}
+
+	FVector vEdgePassed = (_vPoint - m_vActorLoc).GetUnsafeNormal() * m_dTraceLength;
+	vEdgePassed = vEdgePassed.RotateAngleAxis(_dAngleOffset, FVector::UpVector);
+	vEdgePassed = m_vActorLoc + vEdgePassed;
+	if (!UKismetSystemLibrary::LineTraceSingle(GetWorld(), m_vActorLoc, vEdgePassed, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, ignore, EDrawDebugTrace::Type::ForOneFrame, result, true))
+	{
+		m_arrValidPoints.Emplace(_pMeshCom, vEdgePassed);
+	}
+	else
+	{
+		m_arrValidPoints.Emplace(result.GetActor()->FindComponentByClass<UStaticMeshComponent>(), result.ImpactPoint);
+	}
+}
+
 FMeshPoint ALineOfSightActor::GetTracedPoint(const FVector& _vBasePoint, double _dAngle)
 {
 	FVector vTraceDir = (_vBasePoint - m_vActorLoc).GetUnsafeNormal();
@@ -133,13 +165,13 @@ void ALineOfSightActor::CalculateValidPoints()
 	for (const auto& pair : m_mapDetectedObstacles)
 	{
 		UStaticMeshComponent* pMeshCom = pair.Key;
-		UKismetSystemLibrary::GetDisplayName(pMeshCom->GetOwner());
+		UE_LOG(LogTemp, Log, TEXT("%s"), *UKismetSystemLibrary::GetDisplayName(pMeshCom->GetOwner()));
 		//장애물과 시점으로의 벡터를 기준으로 점들의 각도를 계산
 		const FVector& vAngleBase = (m_vActorLoc - pMeshCom->GetOwner()->GetActorLocation()).GetUnsafeNormal();
 		m_dBaseAngle = vAngleBase.Rotation().Yaw >= 0 ? vAngleBase.Rotation().Yaw : 360 + vAngleBase.Rotation().Yaw;
 
 		TArray<FMeshPoint> arrPoints = pair.Value;
-		TArray<FMeshPoint> arrValidPoints;
+		m_arrValidPoints.Empty();
 		//각도에 따라 정렬
 		arrPoints.Sort([&](const FMeshPoint& lhs, const FMeshPoint& rhs) { return SortByAngle(lhs, rhs); });
 
@@ -167,7 +199,7 @@ void ALineOfSightActor::CalculateValidPoints()
 		//큐브인 경우
 		if (arrPoints.Num() == 4)
 		{
-			arrValidPoints.Reserve(4);
+			m_arrValidPoints.Reserve(4);
 			//1면만 보고 있는지 2면을 보고 있는지 구분
 			//가운데 각도 2개 중 가장 가까운 점이 있다면 2면, 아니라면 1면
 			TArray<int> arrInRangePointIdx;
@@ -242,7 +274,6 @@ void ALineOfSightActor::CalculateValidPoints()
 				//0개인 경우
 				if (arrInRangePointIdx.Num() == 0)
 				{
-					UE_LOG(LogTemp, Error, TEXT("Cube 2 side but zero point!"));
 					continue;
 				}
 				//1개인 경우
@@ -260,13 +291,12 @@ void ALineOfSightActor::CalculateValidPoints()
 							vLeftPoint = FindLeftPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMidPoint.point, dTraceLengthSquared);
 						}
 
-						arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, dTraceAngleOffset));
-						arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, -dTraceAngleOffset));
+						AddEdgePoint(vLeftPoint, pMeshCom, -m_dTraceAngleOffset);
 
 						DrawDebugPoint(GetWorld(), vLeftPoint, 10, FColor::Blue, false, -1, 1);
 					}
 
-					arrValidPoints.Emplace(GetTracedPoint(vMidPoint.point, 0));
+					m_arrValidPoints.Emplace(GetTracedPoint(vMidPoint.point, 0));
 
 					{
 						FVector vRightPoint;
@@ -280,8 +310,7 @@ void ALineOfSightActor::CalculateValidPoints()
 							vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMidPoint.point, vMostRightPoint.point, dTraceLengthSquared);
 						}
 
-						arrValidPoints.Emplace(GetTracedPoint(vRightPoint, dTraceAngleOffset));
-						arrValidPoints.Emplace(GetTracedPoint(vRightPoint, -dTraceAngleOffset));
+						AddEdgePoint(vRightPoint, pMeshCom, m_dTraceAngleOffset);
 
 						DrawDebugPoint(GetWorld(), vRightPoint, 10, FColor::Red, false, -1, 1);
 					}
@@ -303,15 +332,13 @@ void ALineOfSightActor::CalculateValidPoints()
 								vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMidPoint.point, vMostRightPoint.point, dTraceLengthSquared);
 							}
 
-							arrValidPoints.Emplace(GetTracedPoint(vRightPoint, -dTraceAngleOffset));
-							arrValidPoints.Emplace(GetTracedPoint(vRightPoint, dTraceAngleOffset));
+							AddPoint(vRightPoint, pMeshCom);
 
 							DrawDebugPoint(GetWorld(), vRightPoint, 10, FColor::Red, false, -1, 1);
 						}
 
-						arrValidPoints.Emplace(GetTracedPoint(vMostLeftPoint.point, -dTraceAngleOffset));
-						arrValidPoints.Emplace(GetTracedPoint(vMostLeftPoint.point, dTraceAngleOffset));
-						arrValidPoints.Emplace(GetTracedPoint(vMidPoint.point, 0));
+						AddEdgePoint(vMostLeftPoint.point, pMeshCom, -m_dTraceAngleOffset);
+						AddPoint(vMidPoint.point, pMeshCom);
 					}
 					//오른쪽 점과 가까운 점만 포함하는 경우
 					else if (arrInRangePointIdx[1] == 3)
@@ -327,25 +354,21 @@ void ALineOfSightActor::CalculateValidPoints()
 								vLeftPoint = FindLeftPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMidPoint.point, dTraceLengthSquared);
 							}
 
-							arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, -dTraceAngleOffset));
-							arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, dTraceAngleOffset));
+							AddPoint(vLeftPoint, pMeshCom);
 
 							DrawDebugPoint(GetWorld(), vLeftPoint, 10, FColor::Blue, false, -1, 1);
 						}
 
-						arrValidPoints.Emplace(GetTracedPoint(vMidPoint.point, 0));
-						arrValidPoints.Emplace(GetTracedPoint(vMostRightPoint.point, -dTraceAngleOffset));
-						arrValidPoints.Emplace(GetTracedPoint(vMostRightPoint.point, dTraceAngleOffset));
+						AddEdgePoint(vMostRightPoint.point, pMeshCom, m_dTraceAngleOffset);
+						AddPoint(vMidPoint.point, pMeshCom);
 					}
 				}
 				//3, 4개인 경우
 				else
 				{
-					arrValidPoints.Emplace(GetTracedPoint(vMostLeftPoint.point, -dTraceAngleOffset));
-					arrValidPoints.Emplace(GetTracedPoint(vMostLeftPoint.point, dTraceAngleOffset));
-					arrValidPoints.Emplace(GetTracedPoint(vMidPoint.point, 0));
-					arrValidPoints.Emplace(GetTracedPoint(vMostRightPoint.point, -dTraceAngleOffset));
-					arrValidPoints.Emplace(GetTracedPoint(vMostRightPoint.point, dTraceAngleOffset));
+					AddEdgePoint(vMostLeftPoint.point, pMeshCom, -m_dTraceAngleOffset);
+					AddEdgePoint(vMostRightPoint.point, pMeshCom, m_dTraceAngleOffset);
+					AddPoint(vMidPoint.point, pMeshCom);
 				}
 			}
 			//1면인 경우
@@ -373,8 +396,8 @@ void ALineOfSightActor::CalculateValidPoints()
 						vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared);
 					}
 
-					arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, 0));
-					arrValidPoints.Emplace(GetTracedPoint(vRightPoint, 0));
+					AddPoint(vLeftPoint, pMeshCom);
+					AddPoint(vRightPoint, pMeshCom);
 
 					DrawDebugPoint(GetWorld(), vLeftPoint, 10, FColor::Blue, false, -1, 1);
 					DrawDebugPoint(GetWorld(), vRightPoint, 10, FColor::Red, false, -1, 1);
@@ -390,9 +413,8 @@ void ALineOfSightActor::CalculateValidPoints()
 						FVector vRightTraceEnd = m_vActorLoc + vRightTrace * m_dTraceLength;
 						TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, vRightTrace, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared, vRightPoint);
 
-						arrValidPoints.Emplace(GetTracedPoint(vMostLeftPoint.point, dTraceAngleOffset));
-						arrValidPoints.Emplace(GetTracedPoint(vMostLeftPoint.point, -dTraceAngleOffset));
-						arrValidPoints.Emplace(GetTracedPoint(vRightPoint, 0));
+						AddEdgePoint(vMostLeftPoint.point, pMeshCom, -m_dTraceAngleOffset);
+						AddPoint(vRightPoint, pMeshCom);
 					}
 					//오른쪽 점이 포함된 경우
 					else if (arrInRangePointIdx[0] == 3)
@@ -402,9 +424,8 @@ void ALineOfSightActor::CalculateValidPoints()
 						FVector vLeftTraceEnd = m_vActorLoc + vLeftTrace * m_dTraceLength;
 						TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, vLeftTrace, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared, vLeftPoint);
 
-						arrValidPoints.Emplace(GetTracedPoint(vMostRightPoint.point, dTraceAngleOffset));
-						arrValidPoints.Emplace(GetTracedPoint(vMostRightPoint.point, -dTraceAngleOffset));
-						arrValidPoints.Emplace(GetTracedPoint(vLeftPoint, 0));
+						AddEdgePoint(vMostRightPoint.point, pMeshCom, m_dTraceAngleOffset);
+						AddPoint(vLeftPoint, pMeshCom);
 					}
 					else
 					{
@@ -414,10 +435,8 @@ void ALineOfSightActor::CalculateValidPoints()
 				//2개인 경우
 				else
 				{
-					arrValidPoints.Emplace(GetTracedPoint(vMostRightPoint.point, dTraceAngleOffset));
-					arrValidPoints.Emplace(GetTracedPoint(vMostRightPoint.point, -dTraceAngleOffset));
-					arrValidPoints.Emplace(GetTracedPoint(vMostLeftPoint.point, dTraceAngleOffset));
-					arrValidPoints.Emplace(GetTracedPoint(vMostLeftPoint.point, -dTraceAngleOffset));
+					AddEdgePoint(vMostLeftPoint.point, pMeshCom, -m_dTraceAngleOffset);
+					AddEdgePoint(vMostRightPoint.point, pMeshCom, m_dTraceAngleOffset);
 				}
 			}
 		}
@@ -428,7 +447,7 @@ void ALineOfSightActor::CalculateValidPoints()
 
 		//Point와 Mesh를 맵핑한 다음 서로 다른 Mesh 위에 있는 Point롤 삼각형을 만들시 그 사이를 Trace해야
 		//Forward 벡터와의 내적을 왼쪽 Trace 벡터와 비교하여 크다면 시야범위 내에 있음
-		for (const FMeshPoint& p : arrValidPoints)
+		for (const FMeshPoint& p : m_arrValidPoints)
 		{
 			FVector v = p.point - m_vActorLoc;
 			v.Normalize();
@@ -443,6 +462,54 @@ void ALineOfSightActor::CalculateValidPoints()
 	//모든 점을 다시 각도로 정렬
 	m_dBaseAngle = vBack.Rotation().Yaw >= 0 ? vBack.Rotation().Yaw : 360 + vBack.Rotation().Yaw;
 	m_arrDetectedPoints.Sort([&](const FMeshPoint& lhs, const FMeshPoint& rhs) { return SortByAngle(lhs, rhs); });
+
+	TArray<TPair<int, int>> arrSections;
+	if (!m_arrDetectedPoints.IsEmpty())
+	{
+		if (!vLeftTrace.Equals((m_arrDetectedPoints[0].point - m_vActorLoc).GetUnsafeNormal()))
+		{
+			m_arrDetectedPoints.Insert({ nullptr, m_vActorLoc + vLeftTrace * m_dTraceLength }, 0);
+		}
+
+		if (!vRightTrace.Equals((m_arrDetectedPoints.Last().point - m_vActorLoc).GetUnsafeNormal()))
+		{
+			m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + vRightTrace * m_dTraceLength);
+		}
+
+		for (int i = 0; i < m_arrDetectedPoints.Num() - 1; ++i)
+		{
+			if (m_arrDetectedPoints[i].mesh != m_arrDetectedPoints[i + 1].mesh)
+			{
+				arrSections.Emplace(i, i + 1);
+			}
+		}
+	}
+	else
+	{
+		m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + vLeftTrace * m_dTraceLength);
+		m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + vRightTrace * m_dTraceLength);
+
+		arrSections.Emplace(0, 1);
+	}
+
+	int iIdxOffset = 0;
+	for (const TPair<int, int> s : arrSections)
+	{
+		const FVector& vLeft = (m_arrDetectedPoints[s.Key + iIdxOffset].point - m_vActorLoc).GetUnsafeNormal();
+		const FVector& vRight = (m_arrDetectedPoints[s.Value + iIdxOffset].point - m_vActorLoc).GetUnsafeNormal();
+
+		double dAngle = acos(vLeft.Dot(vRight)) * 180 / PI;
+
+		int iTraceToAdd = dAngle / m_dAnglePerTrace;
+		for (int i = 1; i <= iTraceToAdd; ++i)
+		{
+			FVector vDir = vLeft.RotateAngleAxis(i * m_dAnglePerTrace, FVector::UpVector);
+			m_arrDetectedPoints.Insert({nullptr, m_vActorLoc + vDir * m_dTraceLength}, s.Value + iIdxOffset);
+			++iIdxOffset;
+		}
+	}
+
+	UKismetSystemLibrary::PrintString(this, FString::FromInt(m_arrDetectedPoints.Num()), true, false, FLinearColor::Yellow, 0.f);
 }
 
 bool ALineOfSightActor::TryFindTwoLineCrossPoint(const FVector& _p1, const FVector& _p2, const FVector& vP1P2, const FVector& _p3, const FVector& _p4, double _dDistSquared, FVector& _vCrossPoint)
@@ -477,7 +544,7 @@ FVector ALineOfSightActor::FindLeftPointBetweenPointAndLine(const FVector& _vBas
 
 	//출발점과 더 가까워야하므로 -
 	double t = (-b - FMath::Sqrt(squared)) / (2 * a);
-	
+
 	FVector vResult = _vLintPoint1 + v * t;
 	vResult.Z = m_vActorLoc.Z;
 	return vResult;

@@ -32,6 +32,7 @@ class LINEOFSIGHT_API ALineOfSightActor : public AActor
 	FVector m_vActorLoc;
 	bool m_bIsPointCalculated;
 	TArray<FMeshPoint> m_arrDetectedPoints;
+	TArray<FMeshPoint> m_arrValidPoints;
 
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Vectex Trace Optimization", Category = "Line Of Sight")
@@ -46,6 +47,8 @@ protected:
 	double m_dViewAngle = 60;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Trace Offset", Category = "Line Of Sight", meta = (ClampMin = "0"))
 	double m_dTraceOffset = 10;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Angle Per Trace", Category = "Line Of Sight", meta = (ClampMin = "0.1"))
+	double m_dAnglePerTrace = 5;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Trace Angle Offset", Category = "Line Of Sight", meta = (ClampMin = "0"))
 	double m_dTraceAngleOffset = .001;
 
@@ -67,6 +70,8 @@ public:
 	bool SortByAngle(const FMeshPoint& _lhs, const FMeshPoint& _rhs);
 
 private:
+	void AddPoint(const FVector& _vPoint, UStaticMeshComponent* _pMeshCom);
+	void AddEdgePoint(const FVector& _vPoint, UStaticMeshComponent* _pMeshCom, double _dAngleOffset);
 	FMeshPoint GetTracedPoint(const FVector& _vBasePoint, double _dAngle);
 	void CalculateValidPoints();
 	bool TryFindTwoLineCrossPoint(const FVector& _p1, const FVector& _p2, const FVector& vP1P2, const FVector& _p3, const FVector& _p4, double _dDistSquared, FVector& _vCrossPoint);
