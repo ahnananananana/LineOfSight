@@ -35,6 +35,8 @@ class LINEOFSIGHT_API ALineOfSightActor : public AActor
 	TArray<FMeshPoint> m_arrValidPoints;
 
 protected:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Test", Category = "Line Of Sight")
+	bool m_bTest;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Vectex Trace Optimization", Category = "Line Of Sight")
 	bool m_bIsOptimize;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Show Trace Debug", Category = "Line Of Sight")
@@ -48,7 +50,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Trace Offset", Category = "Line Of Sight", meta = (ClampMin = "0"))
 	double m_dTraceOffset = 10;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Angle Per Trace", Category = "Line Of Sight", meta = (ClampMin = "0.1"))
-	double m_dAnglePerTrace = 5;
+	double m_dAnglePerTrace = 3;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Trace Angle Offset", Category = "Line Of Sight", meta = (ClampMin = "0"))
 	double m_dTraceAngleOffset = .001;
 

@@ -15,7 +15,8 @@ ALineOfSightActor::ALineOfSightActor()
 	PrimaryActorTick.bCanEverTick = true;
 }
 
-//TODO: 두 큐브가 서로 겹치는 부분에서 어두운 부분 생김
+//TODO: 두 큐브가 서로 겹치는 부분에서 어두운 부분 생김, 추가 트레이스도 잘 안됨
+//TODO: 비스듬한 면 Offset 처리해야
 TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 {
 	if (!m_bIsPointCalculated)
@@ -88,7 +89,7 @@ void ALineOfSightActor::AddPoint(const FVector& _vPoint, UStaticMeshComponent* _
 {
 	TArray<AActor*> ignore{ _pMeshCom->GetOwner() };
 	FHitResult result;
-	if (!UKismetSystemLibrary::LineTraceSingle(GetWorld(), m_vActorLoc, _vPoint, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, ignore, EDrawDebugTrace::Type::ForOneFrame, result, true))
+	if (!UKismetSystemLibrary::LineTraceSingle(GetWorld(), m_vActorLoc, _vPoint, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, ignore, EDrawDebugTrace::Type::None, result, true))
 	{
 		m_arrValidPoints.Emplace(_pMeshCom, _vPoint);
 	}
@@ -98,7 +99,7 @@ void ALineOfSightActor::AddEdgePoint(const FVector& _vPoint, UStaticMeshComponen
 {
 	TArray<AActor*> ignore{ _pMeshCom->GetOwner() };
 	FHitResult result;
-	if (!UKismetSystemLibrary::LineTraceSingle(GetWorld(), m_vActorLoc, _vPoint, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, ignore, EDrawDebugTrace::Type::ForOneFrame, result, true))
+	if (!UKismetSystemLibrary::LineTraceSingle(GetWorld(), m_vActorLoc, _vPoint, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, ignore, EDrawDebugTrace::Type::None, result, true))
 	{
 		m_arrValidPoints.Emplace(_pMeshCom, _vPoint);
 	}
@@ -106,7 +107,7 @@ void ALineOfSightActor::AddEdgePoint(const FVector& _vPoint, UStaticMeshComponen
 	FVector vEdgePassed = (_vPoint - m_vActorLoc).GetUnsafeNormal() * m_dTraceLength;
 	vEdgePassed = vEdgePassed.RotateAngleAxis(_dAngleOffset, FVector::UpVector);
 	vEdgePassed = m_vActorLoc + vEdgePassed;
-	if (!UKismetSystemLibrary::LineTraceSingle(GetWorld(), m_vActorLoc, vEdgePassed, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, ignore, EDrawDebugTrace::Type::ForOneFrame, result, true))
+	if (!UKismetSystemLibrary::LineTraceSingle(GetWorld(), m_vActorLoc, vEdgePassed, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, ignore, EDrawDebugTrace::Type::None, result, true))
 	{
 		m_arrValidPoints.Emplace(_pMeshCom, vEdgePassed);
 	}
@@ -124,7 +125,7 @@ FMeshPoint ALineOfSightActor::GetTracedPoint(const FVector& _vBasePoint, double 
 	FVector rTraceEnd = m_vActorLoc + vTraceDir * m_dTraceLength;
 	TArray<AActor*> temp;
 	FHitResult result;
-	if (UKismetSystemLibrary::LineTraceSingle(GetWorld(), m_vActorLoc, rTraceEnd, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, temp, EDrawDebugTrace::Type::ForOneFrame, result, true))
+	if (UKismetSystemLibrary::LineTraceSingle(GetWorld(), m_vActorLoc, rTraceEnd, UEngineTypes::ConvertToTraceType(ECC_Visibility), false, temp, EDrawDebugTrace::Type::None, result, true))
 	{
 		return { result.GetActor()->FindComponentByClass<UStaticMeshComponent>(), result.Location };
 	}
@@ -258,10 +259,13 @@ void ALineOfSightActor::CalculateValidPoints()
 				}
 			}
 
-			DrawDebugPoint(GetWorld(), arrPoints[0].point, 10, FColor::Blue, false, -1, 1);
-			DrawDebugPoint(GetWorld(), arrPoints[1].point, 10, FColor::Red, false, -1, 1);
-			DrawDebugPoint(GetWorld(), arrPoints[2].point, 10, FColor::Cyan, false, -1, 1);
-			DrawDebugPoint(GetWorld(), arrPoints[3].point, 10, FColor::Black, false, -1, 1);
+			if (m_bIsShowTraceDebug)
+			{
+				DrawDebugPoint(GetWorld(), arrPoints[0].point, 10, FColor::Blue, false, -1, 1);
+				DrawDebugPoint(GetWorld(), arrPoints[1].point, 10, FColor::Red, false, -1, 1);
+				DrawDebugPoint(GetWorld(), arrPoints[2].point, 10, FColor::Cyan, false, -1, 1);
+				DrawDebugPoint(GetWorld(), arrPoints[3].point, 10, FColor::Black, false, -1, 1);
+			}
 
 			//2면인 경우
 			if (bIsTwoSide)
@@ -293,7 +297,7 @@ void ALineOfSightActor::CalculateValidPoints()
 
 						AddEdgePoint(vLeftPoint, pMeshCom, -m_dTraceAngleOffset);
 
-						DrawDebugPoint(GetWorld(), vLeftPoint, 10, FColor::Blue, false, -1, 1);
+						//DrawDebugPoint(GetWorld(), vLeftPoint, 10, FColor::Blue, false, -1, 1);
 					}
 
 					m_arrValidPoints.Emplace(GetTracedPoint(vMidPoint.point, 0));
@@ -312,7 +316,7 @@ void ALineOfSightActor::CalculateValidPoints()
 
 						AddEdgePoint(vRightPoint, pMeshCom, m_dTraceAngleOffset);
 
-						DrawDebugPoint(GetWorld(), vRightPoint, 10, FColor::Red, false, -1, 1);
+						//DrawDebugPoint(GetWorld(), vRightPoint, 10, FColor::Red, false, -1, 1);
 					}
 				}
 				//2개인 경우
@@ -334,7 +338,7 @@ void ALineOfSightActor::CalculateValidPoints()
 
 							AddPoint(vRightPoint, pMeshCom);
 
-							DrawDebugPoint(GetWorld(), vRightPoint, 10, FColor::Red, false, -1, 1);
+							//DrawDebugPoint(GetWorld(), vRightPoint, 10, FColor::Red, false, -1, 1);
 						}
 
 						AddEdgePoint(vMostLeftPoint.point, pMeshCom, -m_dTraceAngleOffset);
@@ -356,7 +360,7 @@ void ALineOfSightActor::CalculateValidPoints()
 
 							AddPoint(vLeftPoint, pMeshCom);
 
-							DrawDebugPoint(GetWorld(), vLeftPoint, 10, FColor::Blue, false, -1, 1);
+							//DrawDebugPoint(GetWorld(), vLeftPoint, 10, FColor::Blue, false, -1, 1);
 						}
 
 						AddEdgePoint(vMostRightPoint.point, pMeshCom, m_dTraceAngleOffset);
@@ -399,8 +403,8 @@ void ALineOfSightActor::CalculateValidPoints()
 					AddPoint(vLeftPoint, pMeshCom);
 					AddPoint(vRightPoint, pMeshCom);
 
-					DrawDebugPoint(GetWorld(), vLeftPoint, 10, FColor::Blue, false, -1, 1);
-					DrawDebugPoint(GetWorld(), vRightPoint, 10, FColor::Red, false, -1, 1);
+					//DrawDebugPoint(GetWorld(), vLeftPoint, 10, FColor::Blue, false, -1, 1);
+					//DrawDebugPoint(GetWorld(), vRightPoint, 10, FColor::Red, false, -1, 1);
 				}
 				//1개인 경우
 				else if (arrInRangePointIdx.Num() == 1)
@@ -463,53 +467,63 @@ void ALineOfSightActor::CalculateValidPoints()
 	m_dBaseAngle = vBack.Rotation().Yaw >= 0 ? vBack.Rotation().Yaw : 360 + vBack.Rotation().Yaw;
 	m_arrDetectedPoints.Sort([&](const FMeshPoint& lhs, const FMeshPoint& rhs) { return SortByAngle(lhs, rhs); });
 
-	TArray<TPair<int, int>> arrSections;
-	if (!m_arrDetectedPoints.IsEmpty())
+	if (m_bTest)
 	{
-		if (!vLeftTrace.Equals((m_arrDetectedPoints[0].point - m_vActorLoc).GetUnsafeNormal()))
+		TArray<TPair<int, int>> arrSections;
+		if (!m_arrDetectedPoints.IsEmpty())
 		{
-			m_arrDetectedPoints.Insert({ nullptr, m_vActorLoc + vLeftTrace * m_dTraceLength }, 0);
-		}
-
-		if (!vRightTrace.Equals((m_arrDetectedPoints.Last().point - m_vActorLoc).GetUnsafeNormal()))
-		{
-			m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + vRightTrace * m_dTraceLength);
-		}
-
-		for (int i = 0; i < m_arrDetectedPoints.Num() - 1; ++i)
-		{
-			if (m_arrDetectedPoints[i].mesh != m_arrDetectedPoints[i + 1].mesh)
+			if (!vLeftTrace.Equals((m_arrDetectedPoints[0].point - m_vActorLoc).GetUnsafeNormal()))
 			{
-				arrSections.Emplace(i, i + 1);
+				m_arrDetectedPoints.Insert({ nullptr, m_vActorLoc + vLeftTrace * m_dTraceLength }, 0);
+			}
+
+			if (!vRightTrace.Equals((m_arrDetectedPoints.Last().point - m_vActorLoc).GetUnsafeNormal()))
+			{
+				m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + vRightTrace * m_dTraceLength);
+			}
+
+			for (int i = 0; i < m_arrDetectedPoints.Num() - 1; ++i)
+			{
+				if (m_arrDetectedPoints[i].mesh != m_arrDetectedPoints[i + 1].mesh)
+				{
+					arrSections.Emplace(i, i + 1);
+				}
+			}
+		}
+		else
+		{
+			m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + vLeftTrace * m_dTraceLength);
+			m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + vRightTrace * m_dTraceLength);
+
+			arrSections.Emplace(0, 1);
+		}
+
+		int iIdxOffset = 0;
+		for (const TPair<int, int> s : arrSections)
+		{
+			const FVector& vLeft = (m_arrDetectedPoints[s.Key + iIdxOffset].point - m_vActorLoc).GetUnsafeNormal();
+			const FVector& vRight = (m_arrDetectedPoints[s.Value + iIdxOffset].point - m_vActorLoc).GetUnsafeNormal();
+
+			double dAngle = acos(vLeft.Dot(vRight)) * 180 / PI;
+
+			int iTraceToAdd = dAngle / m_dAnglePerTrace;
+			for (int i = 1; i <= iTraceToAdd; ++i)
+			{
+				FVector vDir = vLeft.RotateAngleAxis(i * m_dAnglePerTrace, FVector::UpVector);
+				m_arrDetectedPoints.Insert({ nullptr, m_vActorLoc + vDir * m_dTraceLength }, s.Value + iIdxOffset);
+				++iIdxOffset;
 			}
 		}
 	}
-	else
+
+	if (m_bIsShowTraceDebug)
 	{
-		m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + vLeftTrace * m_dTraceLength);
-		m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + vRightTrace * m_dTraceLength);
-
-		arrSections.Emplace(0, 1);
-	}
-
-	int iIdxOffset = 0;
-	for (const TPair<int, int> s : arrSections)
-	{
-		const FVector& vLeft = (m_arrDetectedPoints[s.Key + iIdxOffset].point - m_vActorLoc).GetUnsafeNormal();
-		const FVector& vRight = (m_arrDetectedPoints[s.Value + iIdxOffset].point - m_vActorLoc).GetUnsafeNormal();
-
-		double dAngle = acos(vLeft.Dot(vRight)) * 180 / PI;
-
-		int iTraceToAdd = dAngle / m_dAnglePerTrace;
-		for (int i = 1; i <= iTraceToAdd; ++i)
+		for (const FMeshPoint& p : m_arrDetectedPoints)
 		{
-			FVector vDir = vLeft.RotateAngleAxis(i * m_dAnglePerTrace, FVector::UpVector);
-			m_arrDetectedPoints.Insert({nullptr, m_vActorLoc + vDir * m_dTraceLength}, s.Value + iIdxOffset);
-			++iIdxOffset;
+			DrawDebugLine(GetWorld(), m_vActorLoc, p.point, FColor::Red, false, -1, 1);
+			DrawDebugPoint(GetWorld(), p.point, 5, FColor::Red, false, -1, 1);
 		}
 	}
-
-	UKismetSystemLibrary::PrintString(this, FString::FromInt(m_arrDetectedPoints.Num()), true, false, FLinearColor::Yellow, 0.f);
 }
 
 bool ALineOfSightActor::TryFindTwoLineCrossPoint(const FVector& _p1, const FVector& _p2, const FVector& vP1P2, const FVector& _p3, const FVector& _p4, double _dDistSquared, FVector& _vCrossPoint)
