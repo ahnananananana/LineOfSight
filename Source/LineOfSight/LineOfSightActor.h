@@ -72,6 +72,7 @@ public:
 	bool SortByAngle(const FMeshPoint& _lhs, const FMeshPoint& _rhs);
 
 private:
+	bool IsInViewAngle(const FVector& vLeftTrace, const FVector& vRightTrace, const FVector& vMLV, const FVector& vMRV, bool& bLTVInclude, bool& bRTVInclude);
 	void AddPoint(const FVector& _vPoint, UStaticMeshComponent* _pMeshCom);
 	void AddEdgePoint(const FVector& _vPoint, UStaticMeshComponent* _pMeshCom, double _dAngleOffset);
 	FMeshPoint GetTracedPoint(const FVector& _vBasePoint, double _dAngle);
