@@ -34,9 +34,19 @@ class LINEOFSIGHT_API ALineOfSightActor : public AActor
 	TArray<FMeshPoint> m_arrDetectedPoints;
 	TArray<FMeshPoint> m_arrValidPoints;
 
+	FVector vForward;
+	FVector vBack;
+	FVector vLeftTrace;
+	FVector vRightTrace;
+	double dTraceLengthSquared;
+	FVector vLTP;
+	FVector vRTP;
+	double dFLDot;
+	FVector vMeshLoc;
+	FVector vMLV, vMRV;
+	bool bLTVInclude, bRTVInclude;
+
 protected:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Test", Category = "Line Of Sight")
-	bool m_bTest;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Vectex Trace Optimization", Category = "Line Of Sight")
 	bool m_bIsOptimize;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Show Trace Debug", Category = "Line Of Sight")
@@ -45,7 +55,7 @@ protected:
 	int m_iTraceCount = 100;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Trace Length", Category = "Line Of Sight", meta = (ClampMin = "0"))
 	double m_dTraceLength = 1000;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "View Angle", Category = "Line Of Sight", meta = (ClampMin = "0", ClampMax = "360", UIMin = "0", UIMax = "360"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "View Angle", Category = "Line Of Sight", meta = (ClampMin = "0", ClampMax = "180", UIMin = "0", UIMax = "180"))
 	double m_dViewAngle = 60;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Trace Offset", Category = "Line Of Sight", meta = (ClampMin = "0"))
 	double m_dTraceOffset = 10;
@@ -72,12 +82,18 @@ public:
 	bool SortByAngle(const FMeshPoint& _lhs, const FMeshPoint& _rhs);
 
 private:
+	void ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMeshPoint>& arrPoints);
+	void ProcessCylinder(UStaticMeshComponent* pMeshCom, TArray<FMeshPoint>& arrPoints);
+	void DrawPoint(const FVector& _vLoc, const FColor& _color);
+	void DrawLine(const FVector& _vStart, const FVector& _vEnd, const FColor& _color);
 	bool IsInViewAngle(const FVector& vLeftTrace, const FVector& vRightTrace, const FVector& vMLV, const FVector& vMRV, bool& bLTVInclude, bool& bRTVInclude);
 	void AddPoint(const FVector& _vPoint, UStaticMeshComponent* _pMeshCom);
+	void AddPointIfTraceHit(const FVector& _vPoint, UStaticMeshComponent* _pMeshCom);
 	void AddEdgePoint(const FVector& _vPoint, UStaticMeshComponent* _pMeshCom, double _dAngleOffset);
 	FMeshPoint GetTracedPoint(const FVector& _vBasePoint, double _dAngle);
 	void CalculateValidPoints();
 	bool TryFindTwoLineCrossPoint(const FVector& _p1, const FVector& _p2, const FVector& vP1P2, const FVector& _p3, const FVector& _p4, double _dDistSquared, FVector& _vCrossPoint);
 	FVector FindLeftPointBetweenPointAndLine(const FVector& _vBasePoint, const FVector& _vLintPoint1, const FVector& _vLintPoint2, double _dLengthSquared);
 	FVector FindRightPointBetweenPointAndLine(const FVector& _vBasePoint, const FVector& _vLintPoint1, const FVector& _vLintPoint2, double _dLengthSquared);
+	void FindPointsBetweenPointAndCircle(const FVector& _vPoint, const FVector& _vCircleCenter, double _dRadiusSquared, double _dDistSquared, FVector& _vOutLeftPoint, FVector& _vOutRightPoint);
 };
