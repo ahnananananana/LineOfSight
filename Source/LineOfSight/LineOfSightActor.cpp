@@ -3,18 +3,71 @@
 #include "DrawDebugHelpers.h"
 #include "GenericPlatform/GenericPlatformMath.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Components/SphereComponent.h"
+#include "LineOfSightVisibility.h"
 
 #define LOG(text) UE_LOG(LogTemp, Log, TEXT(#text))
-
-void ALineOfSightActor::Tick(float _fDelta)
-{
-	Super::Tick(_fDelta);
-	m_bIsPointCalculated = false;
-}
 
 ALineOfSightActor::ALineOfSightActor()
 {
 	PrimaryActorTick.bCanEverTick = true;
+}
+
+void ALineOfSightActor::BeginPlay()
+{
+	Super::BeginPlay();
+	//FCollisionObjectQueryParams coqp(m_iHideChannel);
+
+	m_pSphere = FindComponentByClass<USphereComponent>();
+	if (m_pSphere)
+	{
+		m_pSphere->SetSphereRadius(m_dTraceLength);
+
+		m_pSphere->OnComponentBeginOverlap.AddDynamic(this, &ALineOfSightActor::OnOverlapBegin);
+		m_pSphere->OnComponentEndOverlap.AddDynamic(this, &ALineOfSightActor::OnOverlapEnd);
+
+		TArray<AActor*> arrActors;
+		m_pSphere->GetOverlappingActors(arrActors);
+		for (AActor* actor : arrActors)
+		{
+			if (UStaticMeshComponent* pMeshCom = actor->FindComponentByClass<UStaticMeshComponent>())
+			{
+				AddAdjMesh(pMeshCom);
+			}
+		}
+	}
+}
+
+void ALineOfSightActor::Tick(float _fDelta)
+{
+	Super::Tick(_fDelta);
+
+	m_bIsPointCalculated = false;
+	if (m_pSphere->GetUnscaledSphereRadius() != m_dTraceLength)
+	{
+		m_pSphere->SetSphereRadius(m_dTraceLength, false);
+	}
+}
+
+void ALineOfSightActor::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	if (UStaticMeshComponent* pMeshCom = OtherActor->FindComponentByClass<UStaticMeshComponent>())
+	{
+		AddAdjMesh(pMeshCom);
+	}
+}
+
+void ALineOfSightActor::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+	if (UStaticMeshComponent* pMeshCom = OtherActor->FindComponentByClass<UStaticMeshComponent>())
+	{
+		RemoveAdjMesh(pMeshCom);
+	}
+
+	if (ULineOfSightVisibility* pVisibility = OtherActor->FindComponentByClass<ULineOfSightVisibility>())
+	{
+		pVisibility->SetVisible(false);
+	}
 }
 
 //TODO: 두 큐브가 서로 겹치는 부분에서 어두운 부분 생김, 추가 트레이스도 잘 안됨
@@ -29,10 +82,8 @@ TArray<FMeshPoint> ALineOfSightActor::GetDetectedPoints()
 
 void ALineOfSightActor::AddAdjMesh(UStaticMeshComponent* _pMeshCom)
 {
-	UE_LOG(LogTemp, Log, TEXT("AddAdjMesh"));
 	if (_pMeshCom && !m_mapDetectedObstacles.Contains(_pMeshCom))
 	{
-		UE_LOG(LogTemp, Log, TEXT("AddAdjMesh2"));
 		if (UStaticMesh* pMesh = _pMeshCom->GetStaticMesh())
 		{
 			if (UNavCollisionBase* pNavCol = pMesh->GetNavCollision())
@@ -51,16 +102,24 @@ void ALineOfSightActor::AddAdjMesh(UStaticMeshComponent* _pMeshCom)
 				}
 			}
 		}
+
+		if (ULineOfSightVisibility* v = _pMeshCom->GetOwner()->FindComponentByClass<ULineOfSightVisibility>())
+		{
+			m_setVisibles.Emplace(v);
+		}
 	}
 }
 
 void ALineOfSightActor::RemoveAdjMesh(UStaticMeshComponent* _pMeshCom)
 {
-	UE_LOG(LogTemp, Log, TEXT("RemoveAdjMesh1"));
 	if (_pMeshCom)
 	{
-		UE_LOG(LogTemp, Log, TEXT("RemoveAdjMesh2"));
-		//m_mapDetectedObstacles.Remove(_pMeshCom);
+		m_mapDetectedObstacles.Remove(_pMeshCom);
+
+		if (ULineOfSightVisibility* v = _pMeshCom->GetOwner()->FindComponentByClass<ULineOfSightVisibility>())
+		{
+			m_setVisibles.Remove(v);
+		}
 	}
 }
 
@@ -340,7 +399,7 @@ void ALineOfSightActor::CalculateValidPoints()
 	for (const auto& pair : m_mapDetectedObstacles)
 	{
 		UStaticMeshComponent* pMeshCom = pair.Key;
-		UE_LOG(LogTemp, Log, TEXT("%s"), *UKismetSystemLibrary::GetDisplayName(pMeshCom->GetOwner()));
+		//UE_LOG(LogTemp, Log, TEXT("%s"), *UKismetSystemLibrary::GetDisplayName(pMeshCom->GetOwner()));
 		TArray<FMeshPoint> arrPoints = pair.Value;
 		if (arrPoints.IsEmpty())
 		{
@@ -408,6 +467,26 @@ void ALineOfSightActor::CalculateValidPoints()
 
 		arrSections.Emplace(0, 1);
 	}
+
+	for (ULineOfSightVisibility* v : m_setVisibles)
+	{
+		v->SetVisible(false);
+	}
+
+	for (FMeshPoint& p : m_arrDetectedPoints)
+	{
+		if (p.mesh)
+		{
+			if (ULineOfSightVisibility* visibility = p.mesh->GetOwner()->FindComponentByClass<ULineOfSightVisibility>())
+			{
+				if (m_setVisibles.Contains(visibility))
+				{
+					visibility->SetVisible(true);
+				}
+			}
+		}
+	}
+
 
 	int iIdxOffset = 0;
 	for (const TPair<int, int> s : arrSections)
@@ -480,7 +559,6 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 
 	if (!IsInViewAngle(vLeftTrace, vRightTrace, vMLV, vMRV, bLTVInclude, bRTVInclude))
 	{
-		LOG(IsInViewAngle);
 		return;
 	}
 
@@ -696,7 +774,6 @@ void ALineOfSightActor::ProcessCylinder(UStaticMeshComponent* pMeshCom, TArray<F
 	//장애물이 시야각과 겹치는지 체크
 	if (!IsInViewAngle(vLeftTrace, vRightTrace, vMLV, vMRV, bLTVInclude, bRTVInclude))
 	{
-		LOG(IsInViewAngle);
 		return;
 	}
 

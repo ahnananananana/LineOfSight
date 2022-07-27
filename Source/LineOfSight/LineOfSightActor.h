@@ -6,6 +6,10 @@
 #include "GameFramework/Actor.h"
 #include "LineOfSightActor.generated.h"
 
+class USphereComponent;
+class UPrimitiveComponent;
+class ULineOfSightVisibility;
+
 USTRUCT(Blueprintable)
 struct FMeshPoint
 {
@@ -26,6 +30,7 @@ class LINEOFSIGHT_API ALineOfSightActor : public AActor
 {
 	GENERATED_BODY()
 
+	USphereComponent* m_pSphere;
 	TArray<UStaticMeshComponent*> m_arrAdjMeshes;
 	TMap<UStaticMeshComponent*, TArray<FMeshPoint>> m_mapDetectedObstacles;
 	double m_dBaseAngle;
@@ -33,6 +38,7 @@ class LINEOFSIGHT_API ALineOfSightActor : public AActor
 	bool m_bIsPointCalculated;
 	TArray<FMeshPoint> m_arrDetectedPoints;
 	TArray<FMeshPoint> m_arrValidPoints;
+	TSet<ULineOfSightVisibility*> m_setVisibles;
 
 	FVector vForward;
 	FVector vBack;
@@ -63,11 +69,14 @@ protected:
 	double m_dAnglePerTrace = 3;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Trace Angle Offset", Category = "Line Of Sight", meta = (ClampMin = "0"))
 	double m_dTraceAngleOffset = .001;
+	/*UPROPERTY(EditAnywhere, DisplayName = "Hide Channel", Category = "Line Of Sight", meta = (Bitmask, BitmaskEnum = "ECollisionChannel"))
+	int32 m_iHideChannel;*/
 
 public:
 	UFUNCTION(BlueprintCallable)
 	TArray<FMeshPoint> GetDetectedPoints();
 
+	void BeginPlay() override;
 	void Tick(float _fDelta) override;
 
 public:
@@ -96,4 +105,10 @@ private:
 	FVector FindLeftPointBetweenPointAndLine(const FVector& _vBasePoint, const FVector& _vLintPoint1, const FVector& _vLintPoint2, double _dLengthSquared);
 	FVector FindRightPointBetweenPointAndLine(const FVector& _vBasePoint, const FVector& _vLintPoint1, const FVector& _vLintPoint2, double _dLengthSquared);
 	void FindPointsBetweenPointAndCircle(const FVector& _vPoint, const FVector& _vCircleCenter, double _dRadiusSquared, double _dDistSquared, FVector& _vOutLeftPoint, FVector& _vOutRightPoint);
+
+public:
+	UFUNCTION()
+	void OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	UFUNCTION()
+	void OnOverlapEnd(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 };
