@@ -5,6 +5,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Components/SphereComponent.h"
 #include "LineOfSightVisibility.h"
+#include "Kismet/GameplayStatics.h"
 
 #define LOG(text) UE_LOG(LogTemp, Log, TEXT(#text))
 
@@ -16,7 +17,6 @@ ALineOfSightActor::ALineOfSightActor()
 void ALineOfSightActor::BeginPlay()
 {
 	Super::BeginPlay();
-	//FCollisionObjectQueryParams coqp(m_iHideChannel);
 
 	m_pSphere = FindComponentByClass<USphereComponent>();
 	if (m_pSphere)
@@ -36,6 +36,8 @@ void ALineOfSightActor::BeginPlay()
 			}
 		}
 	}
+
+	//m_pFollowingActor = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
 }
 
 void ALineOfSightActor::Tick(float _fDelta)
@@ -46,6 +48,15 @@ void ALineOfSightActor::Tick(float _fDelta)
 	if (m_pSphere->GetUnscaledSphereRadius() != m_dTraceLength)
 	{
 		m_pSphere->SetSphereRadius(m_dTraceLength, false);
+	}
+
+	if (m_pFollowingActor)
+	{
+		SetActorLocation(m_pFollowingActor->GetActorLocation() + m_vFollowOffset);
+		FRotator rot = m_pFollowingActor->GetActorRotation();
+		rot.Roll = 0;
+		rot.Pitch = 0;
+		SetActorRotation(rot);
 	}
 }
 
@@ -94,11 +105,7 @@ void ALineOfSightActor::AddAdjMesh(UStaticMeshComponent* _pMeshCom)
 				for (const FVector& p : pNavCol->GetConvexCollision().VertexBuffer)
 				{
 					const FVector& tp = _pMeshCom->GetOwner()->GetActorTransform().TransformPosition(p);
-					if (tp.Z <= fActorPosZ)
-					{
-						//해당 Z 위치로 변경 후 추가
-						arrPoints.Emplace(_pMeshCom, tp.X, tp.Y, fActorPosZ);
-					}
+					arrPoints.Emplace(_pMeshCom, tp.X, tp.Y, tp.Z);
 				}
 			}
 		}
@@ -114,7 +121,7 @@ void ALineOfSightActor::RemoveAdjMesh(UStaticMeshComponent* _pMeshCom)
 {
 	if (_pMeshCom)
 	{
-		m_mapDetectedObstacles.Remove(_pMeshCom);
+		//m_mapDetectedObstacles.Remove(_pMeshCom);
 
 		if (ULineOfSightVisibility* v = _pMeshCom->GetOwner()->FindComponentByClass<ULineOfSightVisibility>())
 		{
@@ -148,18 +155,13 @@ bool ALineOfSightActor::SortByAngle(const FMeshPoint& _lhs, const FMeshPoint& _r
 
 bool ALineOfSightActor::IsInViewAngle(const FVector& _vLeftTrace, const FVector& _vRightTrace, const FVector& _vMLV, const FVector& _vMRV, bool& _bLTVInclude, bool& _bRTVInclude)
 {
-	/*double dLTA = _vLeftTrace.Rotation().Yaw >= 0 ? _vLeftTrace.Rotation().Yaw : 360 + _vLeftTrace.Rotation().Yaw;
+	double dLTA = _vLeftTrace.Rotation().Yaw >= 0 ? _vLeftTrace.Rotation().Yaw : 360 + _vLeftTrace.Rotation().Yaw;
 	double dRTA = _vRightTrace.Rotation().Yaw >= 0 ? _vRightTrace.Rotation().Yaw : 360 + _vRightTrace.Rotation().Yaw;
 	double dMLA = _vMLV.Rotation().Yaw >= 0 ? _vMLV.Rotation().Yaw : 360 + _vMLV.Rotation().Yaw;
 	double dMRA = _vMRV.Rotation().Yaw >= 0 ? _vMRV.Rotation().Yaw : 360 + _vMRV.Rotation().Yaw;
 
 	double dBaseAngle = dMLA;
 
-	UE_LOG(LogTemp, Log, TEXT("dLTA %f"), dLTA);
-	UE_LOG(LogTemp, Log, TEXT("dRTA %f"), dRTA);
-	UE_LOG(LogTemp, Log, TEXT("dMLA %f"), dMLA);
-	UE_LOG(LogTemp, Log, TEXT("dMRA %f"), dMRA);
-	LOG(----------------)
 	dLTA -= dBaseAngle;
 	if (dLTA < 0)
 	{
@@ -184,28 +186,23 @@ bool ALineOfSightActor::IsInViewAngle(const FVector& _vLeftTrace, const FVector&
 		dMRA = 360 + dMRA;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("dLTA %f"), dLTA);
-	UE_LOG(LogTemp, Log, TEXT("dRTA %f"), dRTA);
-	UE_LOG(LogTemp, Log, TEXT("dMLA %f"), dMLA);
-	UE_LOG(LogTemp, Log, TEXT("dMRA %f"), dMRA);
+	_bLTVInclude = dLTA <= dMRA;
+	_bRTVInclude = dRTA <= dMRA;
 
-	_bLTVInclude = dMRA < dRTA;
-	_bRTVInclude = dMLA < dRTA;
+	return (dMRA < dRTA && dRTA < dLTA)  || _bLTVInclude || _bRTVInclude;
+	//double dObsDot = _vMRV.Dot(_vMLV);
 
-	return dMRA <= dMLA || _bLTVInclude || _bRTVInclude;*/
-	double dObsDot = _vMRV.Dot(_vMLV);
+	//_bLTVInclude = _vMLV.Dot(_vLeftTrace) >= dObsDot && _vMRV.Dot(_vLeftTrace) >= dObsDot;
+	//_bRTVInclude = _vMLV.Dot(_vRightTrace) >= dObsDot && _vMRV.Dot(_vRightTrace) >= dObsDot;
 
-	_bLTVInclude = _vMLV.Dot(_vLeftTrace) >= dObsDot && _vMRV.Dot(_vLeftTrace) >= dObsDot;
-	_bRTVInclude = _vMLV.Dot(_vRightTrace) >= dObsDot && _vMRV.Dot(_vRightTrace) >= dObsDot;
+	//bool bValid = _bLTVInclude || _bRTVInclude;
 
-	bool bValid = _bLTVInclude || _bRTVInclude;
+	////물체 전체가 시야각 안에 들어온 경우
+	//dObsDot = _vLeftTrace.Dot(_vRightTrace);
+	//bValid |= _vMLV.Dot(_vLeftTrace) >= dObsDot && _vMLV.Dot(_vRightTrace) >= dObsDot &&
+	//	_vMRV.Dot(_vLeftTrace) >= dObsDot && _vMRV.Dot(_vRightTrace) >= dObsDot;
 
-	//물체 전체가 시야각 안에 들어온 경우
-	dObsDot = _vLeftTrace.Dot(_vRightTrace);
-	bValid |= _vMLV.Dot(_vLeftTrace) >= dObsDot && _vMLV.Dot(_vRightTrace) >= dObsDot &&
-		_vMRV.Dot(_vLeftTrace) >= dObsDot && _vMRV.Dot(_vRightTrace) >= dObsDot;
-
-	return bValid;
+	//return bValid;
 }
 
 void ALineOfSightActor::AddPoint(const FVector& _vPoint, UStaticMeshComponent* _pMeshCom)
@@ -381,34 +378,44 @@ void ALineOfSightActor::CalculateValidPoints()
 	//View Angle 안에 있는지 체크
 	//왼쪽 Trace 벡터와 Forward 벡터의 내적보다 큰 점들은 내부에 있는 점
 	m_vActorLoc = GetActorLocation();
-	vForward = GetActorForwardVector();
-	vBack = -vForward;
-	vLeftTrace = vForward.RotateAngleAxis(-m_dViewAngle / 2, FVector3d::UpVector);
-	vRightTrace = vForward.RotateAngleAxis(m_dViewAngle / 2, FVector3d::UpVector);
-	dTraceLengthSquared = m_dTraceLength * m_dTraceLength;
-	vLTP = m_vActorLoc + vLeftTrace * m_dTraceLength;
-	vRTP = m_vActorLoc + vRightTrace * m_dTraceLength;
-	dFLDot = vForward.Dot(vLeftTrace);
+	m_vForward = GetActorForwardVector();
+	m_vBack = -m_vForward;
+	m_vLeftTrace = m_vForward.RotateAngleAxis(-m_dViewAngle / 2, FVector3d::UpVector);
+	m_vRightTrace = m_vForward.RotateAngleAxis(m_dViewAngle / 2, FVector3d::UpVector);
+	m_dTraceLengthSquared = m_dTraceLength * m_dTraceLength;
+	m_vLTP = m_vActorLoc + m_vLeftTrace * m_dTraceLength;
+	m_vRTP = m_vActorLoc + m_vRightTrace * m_dTraceLength;
+	m_dFLDot = m_vForward.Dot(m_vLeftTrace);
 
-	if (m_bIsShowTraceDebug)
+	if (m_bIsShowTrace)
 	{
-		DrawDebugLine(GetWorld(), m_vActorLoc, m_vActorLoc + vLeftTrace * m_dTraceLength, FColor::Blue, false, -1, 1, 1);
-		DrawDebugLine(GetWorld(), m_vActorLoc, m_vActorLoc + vRightTrace * m_dTraceLength, FColor::Blue, false, -1, 1, 1);
+		DrawDebugLine(GetWorld(), m_vActorLoc, m_vActorLoc + m_vLeftTrace * m_dTraceLength, FColor::Blue, false, -1, 1, 1);
+		DrawDebugLine(GetWorld(), m_vActorLoc, m_vActorLoc + m_vRightTrace * m_dTraceLength, FColor::Blue, false, -1, 1, 1);
 	}
 
 	for (const auto& pair : m_mapDetectedObstacles)
 	{
 		UStaticMeshComponent* pMeshCom = pair.Key;
-		//UE_LOG(LogTemp, Log, TEXT("%s"), *UKismetSystemLibrary::GetDisplayName(pMeshCom->GetOwner()));
-		TArray<FMeshPoint> arrPoints = pair.Value;
+		UE_LOG(LogTemp, Log, TEXT("%s"), *UKismetSystemLibrary::GetDisplayName(pMeshCom->GetOwner()));
+
+		TArray<FMeshPoint> arrPoints;
+		for (const FMeshPoint& p : pair.Value)
+		{
+			if (m_vActorLoc.Z <= p.point.Z)
+			{
+				//해당 Z 위치로 변경 후 추가
+				arrPoints.Emplace(pMeshCom, p.point.X, p.point.Y, m_vActorLoc.Z);
+			}
+		}
+
 		if (arrPoints.IsEmpty())
 		{
 			UE_LOG(LogTemp, Error, TEXT("No Points"));
 			continue;
 		}
 
-		vMeshLoc = pMeshCom->GetOwner()->GetActorLocation();
-		vMeshLoc.Z = m_vActorLoc.Z;
+		m_vMeshLoc = pMeshCom->GetOwner()->GetActorLocation();
+		m_vMeshLoc.Z = m_vActorLoc.Z;
 
 		//점 갯수로 큐브인지 원기둥인지 구분
 		//큐브인 경우
@@ -428,7 +435,7 @@ void ALineOfSightActor::CalculateValidPoints()
 			FVector v = p.point - m_vActorLoc;
 			v.Normalize();
 
-			if (vForward.Dot(v) + .001 >= dFLDot)
+			if (m_vForward.Dot(v) + .001 >= m_dFLDot)
 			{
 				m_arrDetectedPoints.Emplace(p);
 			}
@@ -436,20 +443,20 @@ void ALineOfSightActor::CalculateValidPoints()
 	}
 
 	//모든 점을 다시 각도로 정렬
-	m_dBaseAngle = vBack.Rotation().Yaw >= 0 ? vBack.Rotation().Yaw : 360 + vBack.Rotation().Yaw;
+	m_dBaseAngle = m_vBack.Rotation().Yaw >= 0 ? m_vBack.Rotation().Yaw : 360 + m_vBack.Rotation().Yaw;
 	m_arrDetectedPoints.Sort([&](const FMeshPoint& lhs, const FMeshPoint& rhs) { return SortByAngle(lhs, rhs); });
 
 	TArray<TPair<int, int>> arrSections;
 	if (!m_arrDetectedPoints.IsEmpty())
 	{
-		if (!vLeftTrace.Equals((m_arrDetectedPoints[0].point - m_vActorLoc).GetUnsafeNormal()))
+		if (!m_vLeftTrace.Equals((m_arrDetectedPoints[0].point - m_vActorLoc).GetUnsafeNormal()))
 		{
-			m_arrDetectedPoints.Insert({ nullptr, m_vActorLoc + vLeftTrace * m_dTraceLength }, 0);
+			m_arrDetectedPoints.Insert({ nullptr, m_vActorLoc + m_vLeftTrace * m_dTraceLength }, 0);
 		}
 
-		if (!vRightTrace.Equals((m_arrDetectedPoints.Last().point - m_vActorLoc).GetUnsafeNormal()))
+		if (!m_vRightTrace.Equals((m_arrDetectedPoints.Last().point - m_vActorLoc).GetUnsafeNormal()))
 		{
-			m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + vRightTrace * m_dTraceLength);
+			m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + m_vRightTrace * m_dTraceLength);
 		}
 
 		for (int i = 0; i < m_arrDetectedPoints.Num() - 1; ++i)
@@ -462,8 +469,8 @@ void ALineOfSightActor::CalculateValidPoints()
 	}
 	else
 	{
-		m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + vLeftTrace * m_dTraceLength);
-		m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + vRightTrace * m_dTraceLength);
+		m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + m_vLeftTrace * m_dTraceLength);
+		m_arrDetectedPoints.Emplace(nullptr, m_vActorLoc + m_vRightTrace * m_dTraceLength);
 
 		arrSections.Emplace(0, 1);
 	}
@@ -475,6 +482,8 @@ void ALineOfSightActor::CalculateValidPoints()
 
 	for (FMeshPoint& p : m_arrDetectedPoints)
 	{
+		p.point.Z = m_vActorLoc.Z;
+
 		if (p.mesh)
 		{
 			if (ULineOfSightVisibility* visibility = p.mesh->GetOwner()->FindComponentByClass<ULineOfSightVisibility>())
@@ -505,20 +514,25 @@ void ALineOfSightActor::CalculateValidPoints()
 		}
 	}
 
-	if (m_bIsShowTraceDebug)
+	if (m_bIsShowTrace)
 	{
 		for (const FMeshPoint& p : m_arrDetectedPoints)
 		{
-			DrawPoint(p.point, FColor::Red);
+			DrawPoint(p.point, FColor::Red, .9);
 			DrawLine(m_vActorLoc, p.point, FColor::Red);
 		}
+	}
+
+	if (!m_bIsRender)
+	{
+		m_arrDetectedPoints.Empty();
 	}
 }
 
 void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMeshPoint>& arrPoints)
 {
 	//장애물과 시점으로의 벡터를 기준으로 점들의 각도를 계산
-	const FVector& vAngleBase = (m_vActorLoc - vMeshLoc).GetUnsafeNormal();
+	const FVector& vAngleBase = (m_vActorLoc - m_vMeshLoc).GetUnsafeNormal();
 	m_dBaseAngle = vAngleBase.Rotation().Yaw >= 0 ? vAngleBase.Rotation().Yaw : 360 + vAngleBase.Rotation().Yaw;
 
 	m_arrValidPoints.Empty();
@@ -548,17 +562,18 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 
 		//시야범위 안에 있는지 체크
 		FVector v = (arrPoints[i].point - m_vActorLoc).GetUnsafeNormal();
-		if (dis <= dTraceLengthSquared && vForward.Dot(v) + .001 >= dFLDot)
+		if (dis <= m_dTraceLengthSquared && m_vForward.Dot(v) + .001 >= m_dFLDot)
 		{
 			arrInRangePointIdx.Emplace(i);
 		}
 	}
 
-	vMLV = (arrPoints[0].point - m_vActorLoc).GetUnsafeNormal();
-	vMRV = (arrPoints.Last().point - m_vActorLoc).GetUnsafeNormal();
+	m_vMLV = (arrPoints[0].point - m_vActorLoc).GetUnsafeNormal();
+	m_vMRV = (arrPoints.Last().point - m_vActorLoc).GetUnsafeNormal();
 
-	if (!IsInViewAngle(vLeftTrace, vRightTrace, vMLV, vMRV, bLTVInclude, bRTVInclude))
+	if (!IsInViewAngle(m_vLeftTrace, m_vRightTrace, m_vMLV, m_vMRV, m_bLTVInclude, m_bRTVInclude))
 	{
+		LOG(ViewAngle);
 		return;
 	}
 
@@ -573,11 +588,14 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 	FMeshPoint vMostLeftPoint = arrPoints[0];
 	FMeshPoint vMostRightPoint = arrPoints[3];
 
+	vMostLeftPoint.point.Z = m_vActorLoc.Z;
+	vMostRightPoint.point.Z = m_vActorLoc.Z;
+
 	if (bIsTwoSide)
 	{
 		FVector v = (arrPoints[iMinIdx].point - m_vActorLoc).GetUnsafeNormal();
 		//2면을 볼 수 있는 위치에서 1면만 보는 경우
-		if (vForward.Dot(v) + .001 < dFLDot)
+		if (m_vForward.Dot(v) + .001 < m_dFLDot)
 		{
 			bIsTwoSide = false;
 			if (GetActorRightVector().Dot((arrPoints[iMinIdx].point - m_vActorLoc).GetUnsafeNormal()) > 0)
@@ -597,10 +615,12 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 	//2면인 경우
 	if (bIsTwoSide)
 	{
+		LOG(bIsTwoSide);
 		//가장 먼 점은 어차피 필요없으므로 제거
 		arrInRangePointIdx.Remove(iMaxIdx);
 
-		const FMeshPoint& vMidPoint = arrPoints[iMinIdx];
+		FMeshPoint& vMidPoint = arrPoints[iMinIdx];
+		vMidPoint.point.Z = m_vActorLoc.Z;
 		//Trace 거리 안에 포함되는 점의 갯수에 따라 처리
 		//0개인 경우
 		if (arrInRangePointIdx.Num() == 0)
@@ -610,16 +630,17 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 		//1개인 경우
 		else if (arrInRangePointIdx.Num() == 1)
 		{
+			LOG(1);
 			{
 				FVector vLeftPoint;
 				//일단 왼쪽 Trace 벡터와 오른쪽 Trace 벡터 방향의 직선과의 교점 계산
-				FVector vLeftTraceEnd = m_vActorLoc + vLeftTrace * m_dTraceLength;
+				FVector vLeftTraceEnd = m_vActorLoc + m_vLeftTrace * m_dTraceLength;
 
 				//거리 밖이라면 유효한 점이 아니므로 해당 점을 다시 계산
 				//시점과 직선 간의 거리가 시야거리만큼인 점을 계산
-				if (!TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, vLeftTrace, vMostLeftPoint.point, vMidPoint.point, dTraceLengthSquared, vLeftPoint))
+				if (!TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, m_vLeftTrace, vMostLeftPoint.point, vMidPoint.point, m_dTraceLengthSquared, vLeftPoint))
 				{
-					vLeftPoint = FindLeftPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMidPoint.point, dTraceLengthSquared);
+					vLeftPoint = FindLeftPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMidPoint.point, m_dTraceLengthSquared);
 				}
 
 				AddEdgePoint(vLeftPoint, pMeshCom, -m_dTraceAngleOffset);
@@ -630,13 +651,13 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 			{
 				FVector vRightPoint;
 				//일단 왼쪽 Trace 벡터와 오른쪽 Trace 벡터 방향의 직선과의 교점 계산
-				FVector vRightTraceEnd = m_vActorLoc + vRightTrace * m_dTraceLength;
+				FVector vRightTraceEnd = m_vActorLoc + m_vRightTrace * m_dTraceLength;
 
 				//거리 밖이라면 유효한 점이 아니므로 해당 점을 다시 계산
 				//시점과 직선 간의 거리가 시야거리만큼인 점을 계산
-				if (!TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, vRightTrace, vMidPoint.point, vMostRightPoint.point, dTraceLengthSquared, vRightPoint))
+				if (!TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, m_vRightTrace, vMidPoint.point, vMostRightPoint.point, m_dTraceLengthSquared, vRightPoint))
 				{
-					vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMidPoint.point, vMostRightPoint.point, dTraceLengthSquared);
+					vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMidPoint.point, vMostRightPoint.point, m_dTraceLengthSquared);
 				}
 
 				AddEdgePoint(vRightPoint, pMeshCom, m_dTraceAngleOffset);
@@ -645,6 +666,7 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 		//2개인 경우
 		else if (arrInRangePointIdx.Num() == 2)
 		{
+			LOG(2);
 			//왼쪽 점과 가까운 점만 포함하는 경우
 			if (arrInRangePointIdx[0] == 0)
 			{
@@ -652,11 +674,11 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 				{
 					FVector vRightPoint;
 					//일단 왼쪽 Trace 벡터와 오른쪽 Trace 벡터 방향의 직선과의 교점 계산
-					FVector vRightTraceEnd = m_vActorLoc + vRightTrace * m_dTraceLength;
+					FVector vRightTraceEnd = m_vActorLoc + m_vRightTrace * m_dTraceLength;
 
-					if (!TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, vRightTrace, vMidPoint.point, vMostRightPoint.point, dTraceLengthSquared, vRightPoint))
+					if (!TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, m_vRightTrace, vMidPoint.point, vMostRightPoint.point, m_dTraceLengthSquared, vRightPoint))
 					{
-						vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMidPoint.point, vMostRightPoint.point, dTraceLengthSquared);
+						vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMidPoint.point, vMostRightPoint.point, m_dTraceLengthSquared);
 					}
 
 					AddPoint(vRightPoint, pMeshCom);
@@ -672,11 +694,11 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 				{
 					FVector vLeftPoint;
 					//일단 왼쪽 Trace 벡터와 오른쪽 Trace 벡터 방향의 직선과의 교점 계산
-					FVector vLeftTraceEnd = m_vActorLoc + vLeftTrace * m_dTraceLength;
+					FVector vLeftTraceEnd = m_vActorLoc + m_vLeftTrace * m_dTraceLength;
 
-					if (!TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, vLeftTrace, vMostLeftPoint.point, vMidPoint.point, dTraceLengthSquared, vLeftPoint))
+					if (!TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, m_vLeftTrace, vMostLeftPoint.point, vMidPoint.point, m_dTraceLengthSquared, vLeftPoint))
 					{
-						vLeftPoint = FindLeftPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMidPoint.point, dTraceLengthSquared);
+						vLeftPoint = FindLeftPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMidPoint.point, m_dTraceLengthSquared);
 					}
 
 					AddPoint(vLeftPoint, pMeshCom);
@@ -689,6 +711,7 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 		//3, 4개인 경우
 		else
 		{
+			LOG(3);
 			AddEdgePoint(vMostLeftPoint.point, pMeshCom, -m_dTraceAngleOffset);
 			AddEdgePoint(vMostRightPoint.point, pMeshCom, m_dTraceAngleOffset);
 			AddPoint(vMidPoint.point, pMeshCom);
@@ -697,6 +720,7 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 	//1면인 경우
 	else
 	{
+		LOG(!bIsTwoSide);
 		//뒤쪽 점들은 고려 안함
 		arrInRangePointIdx.RemoveAll([&](int e) {return e != vMostLeftIdx && e != vMostRightIdx; });
 
@@ -704,19 +728,20 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 		//0개인 경우
 		if (arrInRangePointIdx.Num() == 0)
 		{
+			LOG(0);
 			FVector vLeftPoint, vRightPoint;
 			//일단 왼쪽 Trace 벡터와 오른쪽 Trace 벡터 방향의 직선과의 교점 계산
-			FVector vLeftTraceEnd = m_vActorLoc + vLeftTrace * m_dTraceLength;
-			FVector vRightTraceEnd = m_vActorLoc + vRightTrace * m_dTraceLength;
+			FVector vLeftTraceEnd = m_vActorLoc + m_vLeftTrace * m_dTraceLength;
+			FVector vRightTraceEnd = m_vActorLoc + m_vRightTrace * m_dTraceLength;
 
-			if (!TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, vLeftTrace, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared, vLeftPoint))
+			if (!TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, m_vLeftTrace, vMostLeftPoint.point, vMostRightPoint.point, m_dTraceLengthSquared, vLeftPoint))
 			{
-				vLeftPoint = FindLeftPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared);
+				vLeftPoint = FindLeftPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMostRightPoint.point, m_dTraceLengthSquared);
 			}
 
-			if (!TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, vRightTrace, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared, vRightPoint))
+			if (!TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, m_vRightTrace, vMostLeftPoint.point, vMostRightPoint.point, m_dTraceLengthSquared, vRightPoint))
 			{
-				vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared);
+				vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMostRightPoint.point, m_dTraceLengthSquared);
 			}
 
 			AddPoint(vLeftPoint, pMeshCom);
@@ -725,13 +750,14 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 		//1개인 경우
 		else if (arrInRangePointIdx.Num() == 1)
 		{
+			LOG(1);
 			//왼쪽 점이 포함된 경우
 			if (arrInRangePointIdx[0] == 0)
 			{
+				LOG(1);
 				//오른쪽 Trace 벡터와의 교점 계산
-				FVector vRightPoint;
-				FVector vRightTraceEnd = m_vActorLoc + vRightTrace * m_dTraceLength;
-				TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, vRightTrace, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared, vRightPoint);
+				FVector vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMostRightPoint.point, m_dTraceLengthSquared);
+				FVector vRightTraceEnd = m_vActorLoc + m_vRightTrace * m_dTraceLength;
 
 				AddEdgePoint(vMostLeftPoint.point, pMeshCom, -m_dTraceAngleOffset);
 				AddPoint(vRightPoint, pMeshCom);
@@ -739,10 +765,10 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 			//오른쪽 점이 포함된 경우
 			else if (arrInRangePointIdx[0] == 3)
 			{
+				LOG(2);
 				//계산된 점 중 왼쪽 점에 가까운 점을 추가
-				FVector vLeftPoint;
-				FVector vLeftTraceEnd = m_vActorLoc + vLeftTrace * m_dTraceLength;
-				TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, vLeftTrace, vMostLeftPoint.point, vMostRightPoint.point, dTraceLengthSquared, vLeftPoint);
+				FVector vLeftPoint = FindLeftPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMostRightPoint.point, m_dTraceLengthSquared);
+				FVector vLeftTraceEnd = m_vActorLoc + m_vLeftTrace * m_dTraceLength;
 
 				AddEdgePoint(vMostRightPoint.point, pMeshCom, m_dTraceAngleOffset);
 				AddPoint(vLeftPoint, pMeshCom);
@@ -755,6 +781,7 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 		//2개인 경우
 		else
 		{
+			LOG(2);
 			AddEdgePoint(vMostLeftPoint.point, pMeshCom, -m_dTraceAngleOffset);
 			AddEdgePoint(vMostRightPoint.point, pMeshCom, m_dTraceAngleOffset);
 		}
@@ -763,48 +790,49 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 
 void ALineOfSightActor::ProcessCylinder(UStaticMeshComponent* pMeshCom, TArray<FMeshPoint>& arrPoints)
 {
-	double rr = FVector::DistSquared(vMeshLoc, arrPoints[0].point);
+	UE_LOG(LogTemp, Log, TEXT("%s %s"), *m_vMeshLoc.ToString(), *arrPoints[0].point.ToString());
+	double rr = FVector::DistSquared(m_vMeshLoc, arrPoints[0].point);
 
 	FVector vMLP, vMRP, vLP, vRP;
-	FindPointsBetweenPointAndCircle(m_vActorLoc, vMeshLoc, FVector::DistSquared(vMeshLoc, arrPoints[0].point), FVector::DistSquared(m_vActorLoc, vMeshLoc), vMLP, vMRP);
+	FindPointsBetweenPointAndCircle(m_vActorLoc, m_vMeshLoc, FVector::DistSquared(m_vMeshLoc, arrPoints[0].point), FVector::DistSquared(m_vActorLoc, m_vMeshLoc), vMLP, vMRP);
 
-	vMLV = (vMLP - m_vActorLoc).GetUnsafeNormal();
-	vMRV = (vMRP - m_vActorLoc).GetUnsafeNormal();
+	m_vMLV = (vMLP - m_vActorLoc).GetUnsafeNormal();
+	m_vMRV = (vMRP - m_vActorLoc).GetUnsafeNormal();
 
 	//장애물이 시야각과 겹치는지 체크
-	if (!IsInViewAngle(vLeftTrace, vRightTrace, vMLV, vMRV, bLTVInclude, bRTVInclude))
+	if (!IsInViewAngle(m_vLeftTrace, m_vRightTrace, m_vMLV, m_vMRV, m_bLTVInclude, m_bRTVInclude))
 	{
 		return;
 	}
 
 	//시야각이 원 안으로 들어가는 경우
-	if (bLTVInclude && bRTVInclude)
+	if (m_bLTVInclude && m_bRTVInclude)
 	{
-		double dDisLTP = FVector::DistSquared(vLTP, vMeshLoc);
-		double dDisRTP = FVector::DistSquared(vRTP, vMeshLoc);
-		double dDotLTP = vForward.Dot((vLTP - vMeshLoc).GetUnsafeNormal());
-		double dDotRTP = vForward.Dot((vRTP - vMeshLoc).GetUnsafeNormal());
+		double dDisLTP = FVector::DistSquared(m_vLTP, m_vMeshLoc);
+		double dDisRTP = FVector::DistSquared(m_vRTP, m_vMeshLoc);
+		double dDotLTP = m_vForward.Dot((m_vLTP - m_vMeshLoc).GetUnsafeNormal());
+		double dDotRTP = m_vForward.Dot((m_vRTP - m_vMeshLoc).GetUnsafeNormal());
 
 		//시야각점 모두 원 내부에 있는경우
 		if (dDisLTP <= rr && dDisRTP <= rr)
 		{
-			AddPointIfTraceHit(vLTP, pMeshCom);
-			AddPointIfTraceHit(vRTP, pMeshCom);
+			AddPointIfTraceHit(m_vLTP, pMeshCom);
+			AddPointIfTraceHit(m_vRTP, pMeshCom);
 		}
 		//시야각점 모두 원 외부에 있는경우
 		else if (dDisLTP > rr && dDisRTP > rr)
 		{
 			if (dDotLTP < 0 && dDotRTP < 0)
 			{
-				FindPointsBetweenPointAndCircle(m_vActorLoc, vMeshLoc, FVector::DistSquared(vMeshLoc, arrPoints[0].point), dTraceLengthSquared, vLP, vRP);
+				FindPointsBetweenPointAndCircle(m_vActorLoc, m_vMeshLoc, FVector::DistSquared(m_vMeshLoc, arrPoints[0].point), m_dTraceLengthSquared, vLP, vRP);
 
 				AddPoint(vLP, pMeshCom);
 				AddPoint(vRP, pMeshCom);
 			}
 			else if (dDotLTP >= 0 && dDotRTP >= 0)
 			{
-				AddPointIfTraceHit(vLTP, pMeshCom);
-				AddPointIfTraceHit(vRTP, pMeshCom);
+				AddPointIfTraceHit(m_vLTP, pMeshCom);
+				AddPointIfTraceHit(m_vRTP, pMeshCom);
 			}
 			else
 			{
@@ -817,17 +845,17 @@ void ALineOfSightActor::ProcessCylinder(UStaticMeshComponent* pMeshCom, TArray<F
 			//두 점 모두 원의 앞쪽에 있는 경우
 			if (dDotLTP < 0 && dDotRTP < 0)
 			{
-				FindPointsBetweenPointAndCircle(m_vActorLoc, vMeshLoc, FVector::DistSquared(vMeshLoc, arrPoints[0].point), dTraceLengthSquared, vLP, vRP);
+				FindPointsBetweenPointAndCircle(m_vActorLoc, m_vMeshLoc, FVector::DistSquared(m_vMeshLoc, arrPoints[0].point), m_dTraceLengthSquared, vLP, vRP);
 
 				AddPoint(vRP, pMeshCom);
 
-				AddPointIfTraceHit(vLTP, pMeshCom);
+				AddPointIfTraceHit(m_vLTP, pMeshCom);
 			}
 			//두 점 모두 원의 뒤쪽에 있는 경우
 			else if (dDotLTP >= 0 && dDotRTP >= 0)
 			{
-				AddPointIfTraceHit(vLTP, pMeshCom);
-				AddPointIfTraceHit(vRTP, pMeshCom);
+				AddPointIfTraceHit(m_vLTP, pMeshCom);
+				AddPointIfTraceHit(m_vRTP, pMeshCom);
 			}
 			else
 			{
@@ -840,17 +868,17 @@ void ALineOfSightActor::ProcessCylinder(UStaticMeshComponent* pMeshCom, TArray<F
 			//두 점 모두 원의 앞쪽에 있는 경우
 			if (dDotLTP < 0 && dDotRTP < 0)
 			{
-				FindPointsBetweenPointAndCircle(m_vActorLoc, vMeshLoc, FVector::DistSquared(vMeshLoc, arrPoints[0].point), dTraceLengthSquared, vLP, vRP);
+				FindPointsBetweenPointAndCircle(m_vActorLoc, m_vMeshLoc, FVector::DistSquared(m_vMeshLoc, arrPoints[0].point), m_dTraceLengthSquared, vLP, vRP);
 
 				AddPoint(vLP, pMeshCom);
 
-				AddPointIfTraceHit(vRTP, pMeshCom);
+				AddPointIfTraceHit(m_vRTP, pMeshCom);
 			}
 			//두 점 모두 원의 뒤쪽에 있는 경우
 			else if (dDotLTP >= 0 && dDotRTP >= 0)
 			{
-				AddPointIfTraceHit(vLTP, pMeshCom);
-				AddPointIfTraceHit(vRTP, pMeshCom);
+				AddPointIfTraceHit(m_vLTP, pMeshCom);
+				AddPointIfTraceHit(m_vRTP, pMeshCom);
 			}
 			else
 			{
@@ -858,56 +886,56 @@ void ALineOfSightActor::ProcessCylinder(UStaticMeshComponent* pMeshCom, TArray<F
 			}
 		}
 	}
-	else if (bLTVInclude)
+	else if (m_bLTVInclude)
 	{
 		//View가 원의 오른쪽 부분을 포함할경우
-		if (FVector::DistSquared(m_vActorLoc, vMRP) <= dTraceLengthSquared)
+		if (FVector::DistSquared(m_vActorLoc, vMRP) <= m_dTraceLengthSquared)
 		{
 			AddEdgePoint(vMRP, pMeshCom, m_dTraceAngleOffset);
-			AddPointIfTraceHit(vLTP, pMeshCom);
+			AddPointIfTraceHit(m_vLTP, pMeshCom);
 		}
 		else
 		{
 			//LTP가 원 내부에 있는 경우
-			if (FVector::DistSquared(vMeshLoc, vLTP) <= rr)
+			if (FVector::DistSquared(m_vMeshLoc, m_vLTP) <= rr)
 			{
-				FindPointsBetweenPointAndCircle(m_vActorLoc, vMeshLoc, FVector::DistSquared(vMeshLoc, arrPoints[0].point), dTraceLengthSquared, vLP, vRP);
+				FindPointsBetweenPointAndCircle(m_vActorLoc, m_vMeshLoc, FVector::DistSquared(m_vMeshLoc, arrPoints[0].point), m_dTraceLengthSquared, vLP, vRP);
 
 				AddPoint(vRP, pMeshCom);
-				AddPointIfTraceHit(vLTP, pMeshCom);
+				AddPointIfTraceHit(m_vLTP, pMeshCom);
 			}
 			//외부에 있는 경우
 			else
 			{
-				FindPointsBetweenPointAndCircle(m_vActorLoc, vMeshLoc, FVector::DistSquared(vMeshLoc, arrPoints[0].point), dTraceLengthSquared, vLP, vRP);
+				FindPointsBetweenPointAndCircle(m_vActorLoc, m_vMeshLoc, FVector::DistSquared(m_vMeshLoc, arrPoints[0].point), m_dTraceLengthSquared, vLP, vRP);
 
 				AddPoint(vLP, pMeshCom);
 				AddPoint(vRP, pMeshCom);
 			}
 		}
 	}
-	else if (bRTVInclude)
+	else if (m_bRTVInclude)
 	{
 		//View가 원의 왼쪽 부분을 포함할경우
-		if (FVector::DistSquared(m_vActorLoc, vMLP) <= dTraceLengthSquared)
+		if (FVector::DistSquared(m_vActorLoc, vMLP) <= m_dTraceLengthSquared)
 		{
 			AddEdgePoint(vMLP, pMeshCom, -m_dTraceAngleOffset);
-			AddPointIfTraceHit(vRTP, pMeshCom);
+			AddPointIfTraceHit(m_vRTP, pMeshCom);
 		}
 		else
 		{
 			//RTP가 원 내부에 있는 경우
-			if (FVector::DistSquared(vMeshLoc, vRTP) <= rr)
+			if (FVector::DistSquared(m_vMeshLoc, m_vRTP) <= rr)
 			{
-				FindPointsBetweenPointAndCircle(m_vActorLoc, vMeshLoc, FVector::DistSquared(vMeshLoc, arrPoints[0].point), dTraceLengthSquared, vLP, vRP);
+				FindPointsBetweenPointAndCircle(m_vActorLoc, m_vMeshLoc, FVector::DistSquared(m_vMeshLoc, arrPoints[0].point), m_dTraceLengthSquared, vLP, vRP);
 
 				AddPoint(vLP, pMeshCom);
-				AddPointIfTraceHit(vRTP, pMeshCom);
+				AddPointIfTraceHit(m_vRTP, pMeshCom);
 			}
 			//외부에 있는 경우
 			else
 			{
-				FindPointsBetweenPointAndCircle(m_vActorLoc, vMeshLoc, FVector::DistSquared(vMeshLoc, arrPoints[0].point), dTraceLengthSquared, vLP, vRP);
+				FindPointsBetweenPointAndCircle(m_vActorLoc, m_vMeshLoc, FVector::DistSquared(m_vMeshLoc, arrPoints[0].point), m_dTraceLengthSquared, vLP, vRP);
 				
 				AddPoint(vLP, pMeshCom);
 				AddPoint(vRP, pMeshCom);
@@ -916,16 +944,19 @@ void ALineOfSightActor::ProcessCylinder(UStaticMeshComponent* pMeshCom, TArray<F
 	}
 	else
 	{
+		LOG(1);
 		//View가 완전히 원기둥을 포함할 경우
-		if (FVector::DistSquared(m_vActorLoc, vMLP) <= dTraceLengthSquared)
+		if (FVector::DistSquared(m_vActorLoc, vMLP) <= m_dTraceLengthSquared)
 		{
+			LOG(2);
 			AddEdgePoint(vMLP, pMeshCom, -m_dTraceAngleOffset);
 			AddEdgePoint(vMRP, pMeshCom, m_dTraceAngleOffset);
 		}
 		//부채꼴의 앞쪽에 살짝 걸치는 경우
 		else
 		{
-			FindPointsBetweenPointAndCircle(m_vActorLoc, vMeshLoc, FVector::DistSquared(vMeshLoc, arrPoints[0].point), dTraceLengthSquared, vLP, vRP);
+			LOG(3);
+			FindPointsBetweenPointAndCircle(m_vActorLoc, m_vMeshLoc, FVector::DistSquared(m_vMeshLoc, arrPoints[0].point), m_dTraceLengthSquared, vLP, vRP);
 
 			AddPoint(vLP, pMeshCom);
 			AddPoint(vRP, pMeshCom);
@@ -933,14 +964,14 @@ void ALineOfSightActor::ProcessCylinder(UStaticMeshComponent* pMeshCom, TArray<F
 	}
 }
 
-void ALineOfSightActor::DrawPoint(const FVector& _vLoc, const FColor& _color)
+void ALineOfSightActor::DrawPoint(const FVector& _vLoc, const FColor& _color, double _dDepthPriority)
 {
-	if(m_bIsShowTraceDebug)
-		DrawDebugPoint(GetWorld(), _vLoc, 5, _color, false, -1, .99);
+	if(m_bIsShowTrace)
+		DrawDebugPoint(GetWorld(), _vLoc, 5, _color, false, -1, _dDepthPriority);
 }
 
 void ALineOfSightActor::DrawLine(const FVector& _vStart, const FVector& _vEnd, const FColor& _color)
 {
-	if (m_bIsShowTraceDebug)
+	if (m_bIsShowTrace)
 		DrawDebugLine(GetWorld(), _vStart, _vEnd, _color, false, -1, 1, .99);
 }

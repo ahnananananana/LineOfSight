@@ -40,23 +40,29 @@ class LINEOFSIGHT_API ALineOfSightActor : public AActor
 	TArray<FMeshPoint> m_arrValidPoints;
 	TSet<ULineOfSightVisibility*> m_setVisibles;
 
-	FVector vForward;
-	FVector vBack;
-	FVector vLeftTrace;
-	FVector vRightTrace;
-	double dTraceLengthSquared;
-	FVector vLTP;
-	FVector vRTP;
-	double dFLDot;
-	FVector vMeshLoc;
-	FVector vMLV, vMRV;
-	bool bLTVInclude, bRTVInclude;
+	FVector m_vForward;
+	FVector m_vBack;
+	FVector m_vLeftTrace;
+	FVector m_vRightTrace;
+	double m_dTraceLengthSquared;
+	FVector m_vLTP;
+	FVector m_vRTP;
+	double m_dFLDot;
+	FVector m_vMeshLoc;
+	FVector m_vMLV, m_vMRV;
+	bool m_bLTVInclude, m_bRTVInclude;
 
 protected:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Following Actor", Category = "Line Of Sight")
+	AActor* m_pFollowingActor;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Follow Offset", Category = "Line Of Sight")
+	FVector m_vFollowOffset;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Vectex Trace Optimization", Category = "Line Of Sight")
 	bool m_bIsOptimize;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Show Trace Debug", Category = "Line Of Sight")
-	bool m_bIsShowTraceDebug;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Show Trace", Category = "Line Of Sight")
+	bool m_bIsShowTrace;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Render", Category = "Line Of Sight")
+	bool m_bIsRender = true;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Trace Count", Category = "Line Of Sight", meta = (ClampMin = "1"))
 	int m_iTraceCount = 100;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, DisplayName = "Trace Length", Category = "Line Of Sight", meta = (ClampMin = "0"))
@@ -93,7 +99,7 @@ public:
 private:
 	void ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMeshPoint>& arrPoints);
 	void ProcessCylinder(UStaticMeshComponent* pMeshCom, TArray<FMeshPoint>& arrPoints);
-	void DrawPoint(const FVector& _vLoc, const FColor& _color);
+	void DrawPoint(const FVector& _vLoc, const FColor& _color, double _dDepthPriority = 1);
 	void DrawLine(const FVector& _vStart, const FVector& _vEnd, const FColor& _color);
 	bool IsInViewAngle(const FVector& vLeftTrace, const FVector& vRightTrace, const FVector& vMLV, const FVector& vMRV, bool& bLTVInclude, bool& bRTVInclude);
 	void AddPoint(const FVector& _vPoint, UStaticMeshComponent* _pMeshCom);
