@@ -37,7 +37,7 @@ void ALineOfSightActor::BeginPlay()
 		}
 	}
 
-	//m_pFollowingActor = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	m_pFollowingActor = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
 }
 
 void ALineOfSightActor::Tick(float _fDelta)
@@ -597,6 +597,7 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 		//2면을 볼 수 있는 위치에서 1면만 보는 경우
 		if (m_vForward.Dot(v) + .001 < m_dFLDot)
 		{
+			LOG(bIsTwoSide = false);
 			bIsTwoSide = false;
 			if (GetActorRightVector().Dot((arrPoints[iMinIdx].point - m_vActorLoc).GetUnsafeNormal()) > 0)
 			{
@@ -630,7 +631,6 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 		//1개인 경우
 		else if (arrInRangePointIdx.Num() == 1)
 		{
-			LOG(1);
 			{
 				FVector vLeftPoint;
 				//일단 왼쪽 Trace 벡터와 오른쪽 Trace 벡터 방향의 직선과의 교점 계산
@@ -666,7 +666,6 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 		//2개인 경우
 		else if (arrInRangePointIdx.Num() == 2)
 		{
-			LOG(2);
 			//왼쪽 점과 가까운 점만 포함하는 경우
 			if (arrInRangePointIdx[0] == 0)
 			{
@@ -711,7 +710,6 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 		//3, 4개인 경우
 		else
 		{
-			LOG(3);
 			AddEdgePoint(vMostLeftPoint.point, pMeshCom, -m_dTraceAngleOffset);
 			AddEdgePoint(vMostRightPoint.point, pMeshCom, m_dTraceAngleOffset);
 			AddPoint(vMidPoint.point, pMeshCom);
@@ -728,7 +726,6 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 		//0개인 경우
 		if (arrInRangePointIdx.Num() == 0)
 		{
-			LOG(0);
 			FVector vLeftPoint, vRightPoint;
 			//일단 왼쪽 Trace 벡터와 오른쪽 Trace 벡터 방향의 직선과의 교점 계산
 			FVector vLeftTraceEnd = m_vActorLoc + m_vLeftTrace * m_dTraceLength;
@@ -750,38 +747,32 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 		//1개인 경우
 		else if (arrInRangePointIdx.Num() == 1)
 		{
-			LOG(1);
 			//왼쪽 점이 포함된 경우
 			if (arrInRangePointIdx[0] == 0)
 			{
-				LOG(1);
 				//오른쪽 Trace 벡터와의 교점 계산
-				FVector vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMostRightPoint.point, m_dTraceLengthSquared);
+				FVector vRightPoint;
 				FVector vRightTraceEnd = m_vActorLoc + m_vRightTrace * m_dTraceLength;
+				TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, m_vRightTrace, vMostLeftPoint.point, vMostRightPoint.point, m_dTraceLengthSquared, vRightPoint);
 
-				AddEdgePoint(vMostLeftPoint.point, pMeshCom, -m_dTraceAngleOffset);
 				AddPoint(vRightPoint, pMeshCom);
+				AddEdgePoint(vMostLeftPoint.point, pMeshCom, -m_dTraceAngleOffset);
 			}
 			//오른쪽 점이 포함된 경우
 			else if (arrInRangePointIdx[0] == 3)
 			{
-				LOG(2);
-				//계산된 점 중 왼쪽 점에 가까운 점을 추가
-				FVector vLeftPoint = FindLeftPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMostRightPoint.point, m_dTraceLengthSquared);
+				//왼른쪽 Trace 벡터와의 교점 계산
+				FVector vLeftPoint;
 				FVector vLeftTraceEnd = m_vActorLoc + m_vLeftTrace * m_dTraceLength;
+				TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, m_vLeftTrace, vMostLeftPoint.point, vMostRightPoint.point, m_dTraceLengthSquared, vLeftPoint);
 
-				AddEdgePoint(vMostRightPoint.point, pMeshCom, m_dTraceAngleOffset);
 				AddPoint(vLeftPoint, pMeshCom);
-			}
-			else
-			{
-				UE_LOG(LogTemp, Error, TEXT("Algorithm Broken!"));
+				AddEdgePoint(vMostRightPoint.point, pMeshCom, m_dTraceAngleOffset);
 			}
 		}
 		//2개인 경우
 		else
 		{
-			LOG(2);
 			AddEdgePoint(vMostLeftPoint.point, pMeshCom, -m_dTraceAngleOffset);
 			AddEdgePoint(vMostRightPoint.point, pMeshCom, m_dTraceAngleOffset);
 		}
