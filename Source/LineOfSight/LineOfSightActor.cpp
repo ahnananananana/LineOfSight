@@ -267,8 +267,10 @@ FMeshPoint ALineOfSightActor::GetTracedPoint(const FVector& _vBasePoint, double 
 	}
 }
 
-bool ALineOfSightActor::TryFindTwoLineCrossPoint(const FVector& _p1, const FVector& _p2, const FVector& vP1P2, const FVector& _p3, const FVector& _p4, double _dDistSquared, FVector& _vCrossPoint)
+bool ALineOfSightActor::TryFindTwoLineCrossPoint(const FVector& _p1, const FVector& _p2, const FVector& vP1P2, 
+												const FVector& _p3, const FVector& _p4, double _dDistSquared, FVector& _vCrossPoint)
 {
+	//_dDistSquared: 선분 p1p2의 길이 
 	double denominator = (_p1.X - _p2.X) * (_p3.Y - _p4.Y) - (_p1.Y - _p2.Y) * (_p3.X - _p4.X);
 	//평행하거나 일치하는 경우
 	if (denominator == 0)
@@ -279,57 +281,65 @@ bool ALineOfSightActor::TryFindTwoLineCrossPoint(const FVector& _p1, const FVect
 	_vCrossPoint.Z = m_vActorLoc.Z;
 
 	//각 점이 시점과 종점 사이에 있는지 체크
+	//p1에서 교점으로의 벡터와 p1p2벡터와 같으면서 p1과 교점의 거리가 선분의 길이 이하라면 true
 	return vP1P2.Equals((_vCrossPoint - _p1).GetUnsafeNormal()) && FVector::DistSquared(_p1, _vCrossPoint) <= _dDistSquared;
 }
 
-FVector ALineOfSightActor::FindLeftPointBetweenPointAndLine(const FVector& _vBasePoint, const FVector& _vLintPoint1, const FVector& _vLintPoint2, double _dLengthSquared)
+FVector ALineOfSightActor::FindLeftPointBetweenPointAndLine(const FVector& _vBasePoint, 
+		const FVector& _vLinePoint1, const FVector& _vLinePoint2, double _dLengthSquared)
 {
-	FVector v = (_vLintPoint2 - _vLintPoint1).GetUnsafeNormal();
+	//_vBasePoint: 기준점
+	// _vLinePoint1: 선분의 왼쪽점
+	// _vLinePoint2: 선분의 오른쪽점
+	//_dLengthSquared: 점과 직선 사이의 떨어져야할 거리
+	FVector v = (_vLinePoint2 - _vLinePoint1).GetUnsafeNormal();
 
-	double A = _vLintPoint1.X - m_vActorLoc.X;
-	double B = _vLintPoint1.Y - m_vActorLoc.Y;
-	double C = v.X;
-	double D = v.Y;
+	double A = _vLinePoint1.X - _vBasePoint.X;
+	double B = _vLinePoint1.Y - _vBasePoint.Y;
 
-	double a = C * C + D * D;
-	double b = 2 * A * C + 2 * B * D;
-	double c = A * A + B * B - _dLengthSquared;
+	double C = v.X * v.X + v.Y * v.Y;
+	double D = 2 * A * v.X + 2 * B * v.Y;
+	double E = A * A + B * B - _dLengthSquared;
 
-	double squared = b * b - 4 * a * c;
+	double squared = D * D - 4 * C * E;
 
 	//출발점과 더 가까워야하므로 -
-	double t = (-b - FMath::Sqrt(squared)) / (2 * a);
+	double t = (-D - FMath::Sqrt(squared)) / (2 * C);
 
-	FVector vResult = _vLintPoint1 + v * t;
+	FVector vResult = _vLinePoint1 + v * t;
 	vResult.Z = m_vActorLoc.Z;
 	return vResult;
 }
 
-FVector ALineOfSightActor::FindRightPointBetweenPointAndLine(const FVector& _vBasePoint, const FVector& _vLintPoint1, const FVector& _vLintPoint2, double _dLengthSquared)
+FVector ALineOfSightActor::FindRightPointBetweenPointAndLine(const FVector& _vBasePoint, 
+	const FVector& _vLinePoint1, const FVector& _vLinePoint2, double _dLengthSquared)
 {
-	FVector v = (_vLintPoint2 - _vLintPoint1).GetUnsafeNormal();
+	//_vBasePoint: 기준점
+	// _vLinePoint1: 선분의 왼쪽점
+	// _vLinePoint2: 선분의 오른쪽점
+	//_dLengthSquared: 점과 직선 사이의 떨어져야할 거리
+	FVector v = (_vLinePoint2 - _vLinePoint1).GetUnsafeNormal();
 
-	double A = _vLintPoint1.X - m_vActorLoc.X;
-	double B = _vLintPoint1.Y - m_vActorLoc.Y;
-	double C = v.X;
-	double D = v.Y;
+	double A = _vLinePoint1.X - _vBasePoint.X;
+	double B = _vLinePoint1.Y - _vBasePoint.Y;
 
-	double a = C * C + D * D;
-	double b = 2 * A * C + 2 * B * D;
-	double c = A * A + B * B - _dLengthSquared;
+	double C = v.X * v.X + v.Y * v.Y;
+	double D = 2 * A * v.X + 2 * B * v.Y;
+	double E = A * A + B * B - _dLengthSquared;
 
-	double squared = b * b - 4 * a * c;
+	double squared = D * D - 4 * C * E;
 
-	//출발점과 더 가까워야하므로 -
-	double t = (-b + FMath::Sqrt(squared)) / (2 * a);
+	//출발점과 더 멀어야하므로 +
+	double t = (-D - FMath::Sqrt(squared)) / (2 * C);
 
-	FVector vResult = _vLintPoint1 + v * t;
+	FVector vResult = _vLinePoint1 + v * t;
 	vResult.Z = m_vActorLoc.Z;
 	return vResult;
 }
 
 void ALineOfSightActor::FindPointsBetweenPointAndCircle(const FVector& _vPoint, const FVector& _vCircleCenter, double _dRadiusSquared, double _dDistSquared, FVector& _vOutLeftPoint, FVector& _vOutRightPoint)
 {
+	//한 점에서 원으로 그은 접선의 접점을 구하는 공식
 	double rr = _dRadiusSquared;
 	double d = _vCircleCenter.X;
 	double e = _vCircleCenter.Y;
@@ -355,8 +365,8 @@ void ALineOfSightActor::FindPointsBetweenPointAndCircle(const FVector& _vPoint, 
 	_vOutRightPoint = FVector(x, y, m_vActorLoc.Z);
 
 	//시점에서 원의 중심으로 가는 벡터의 왼쪽 벡터와 내적하여 -면 오른쪽점, +면 왼쪽점
-	const FVector& vAtoM = (_vCircleCenter - _vPoint).GetUnsafeNormal();
-	const FVector& vBaseRight = vAtoM.Cross(FVector::UpVector);
+	const FVector& vPointToCenter = (_vCircleCenter - _vPoint).GetUnsafeNormal();
+	const FVector& vBaseRight = vPointToCenter.Cross(FVector::UpVector);
 
 	if (vBaseRight.Dot((_vOutLeftPoint - _vPoint).GetUnsafeNormal()) < 0)
 	{
@@ -731,11 +741,14 @@ void ALineOfSightActor::ProcessCube(UStaticMeshComponent* pMeshCom, TArray<FMesh
 			FVector vLeftTraceEnd = m_vActorLoc + m_vLeftTrace * m_dTraceLength;
 			FVector vRightTraceEnd = m_vActorLoc + m_vRightTrace * m_dTraceLength;
 
+			//시야 부채꼴의 왼쪽 선과 면의 교점 계산
 			if (!TryFindTwoLineCrossPoint(m_vActorLoc, vLeftTraceEnd, m_vLeftTrace, vMostLeftPoint.point, vMostRightPoint.point, m_dTraceLengthSquared, vLeftPoint))
 			{
+				//그런 점이 없다면 시점에서 면까지 시야 거리만큼 떨어진 점 중 왼쪽 점 계산
 				vLeftPoint = FindLeftPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMostRightPoint.point, m_dTraceLengthSquared);
 			}
 
+			//위의 과정을 그대로 오른쪽에 적용
 			if (!TryFindTwoLineCrossPoint(m_vActorLoc, vRightTraceEnd, m_vRightTrace, vMostLeftPoint.point, vMostRightPoint.point, m_dTraceLengthSquared, vRightPoint))
 			{
 				vRightPoint = FindRightPointBetweenPointAndLine(m_vActorLoc, vMostLeftPoint.point, vMostRightPoint.point, m_dTraceLengthSquared);
