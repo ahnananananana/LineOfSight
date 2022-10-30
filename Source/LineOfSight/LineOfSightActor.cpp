@@ -190,19 +190,6 @@ bool ALineOfSightActor::IsInViewAngle(const FVector& _vLeftTrace, const FVector&
 	_bRTVInclude = dRTA <= dMRA;
 
 	return (dMRA < dRTA && dRTA < dLTA)  || _bLTVInclude || _bRTVInclude;
-	//double dObsDot = _vMRV.Dot(_vMLV);
-
-	//_bLTVInclude = _vMLV.Dot(_vLeftTrace) >= dObsDot && _vMRV.Dot(_vLeftTrace) >= dObsDot;
-	//_bRTVInclude = _vMLV.Dot(_vRightTrace) >= dObsDot && _vMRV.Dot(_vRightTrace) >= dObsDot;
-
-	//bool bValid = _bLTVInclude || _bRTVInclude;
-
-	////물체 전체가 시야각 안에 들어온 경우
-	//dObsDot = _vLeftTrace.Dot(_vRightTrace);
-	//bValid |= _vMLV.Dot(_vLeftTrace) >= dObsDot && _vMLV.Dot(_vRightTrace) >= dObsDot &&
-	//	_vMRV.Dot(_vLeftTrace) >= dObsDot && _vMRV.Dot(_vRightTrace) >= dObsDot;
-
-	//return bValid;
 }
 
 void ALineOfSightActor::AddPoint(const FVector& _vPoint, UStaticMeshComponent* _pMeshCom)
@@ -364,11 +351,11 @@ void ALineOfSightActor::FindPointsBetweenPointAndCircle(const FVector& _vPoint, 
 	y = A + B * x;
 	_vOutRightPoint = FVector(x, y, m_vActorLoc.Z);
 
-	//시점에서 원의 중심으로 가는 벡터의 왼쪽 벡터와 내적하여 -면 오른쪽점, +면 왼쪽점
+	//시점의 오른쪽 벡터와 내적하여 +면 오른쪽점, -면 왼쪽점
 	const FVector& vPointToCenter = (_vCircleCenter - _vPoint).GetUnsafeNormal();
 	const FVector& vBaseRight = vPointToCenter.Cross(FVector::UpVector);
 
-	if (vBaseRight.Dot((_vOutLeftPoint - _vPoint).GetUnsafeNormal()) < 0)
+	if (vBaseRight.Dot((_vOutLeftPoint - _vPoint).GetUnsafeNormal()) > 0)
 	{
 		FVector temp = _vOutLeftPoint;
 		_vOutLeftPoint = _vOutRightPoint;
